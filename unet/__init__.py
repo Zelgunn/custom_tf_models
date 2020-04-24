@@ -1,2 +1,2 @@
-from unet.UNet import UNet, transpose_layers
-from unet.AuvioVisualUNet import AudioVideoUNet
+from custom_tf_models.unet.UNet import UNet, transpose_layers
+from custom_tf_models.unet.AuvioVisualUNet import AudioVideoUNet

@@ -1,3 +1,3 @@
-from autoregressive.SAAM import SAAM
-from autoregressive.CNNTransformer import CNNTransformer
-from autoregressive.AND import AND
+from custom_tf_models.autoregressive.SAAM import SAAM
+from custom_tf_models.autoregressive.CNNTransformer import CNNTransformer
+from custom_tf_models.autoregressive.AND import AND
