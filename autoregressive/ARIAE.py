@@ -1,6 +1,6 @@
 # ARIAE : Autoregressive Interpolating Autoencoder
 import tensorflow as tf
-from tensorflow_core.python.keras import Model
+from tensorflow.python.keras import Model
 from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from typing import Dict
 

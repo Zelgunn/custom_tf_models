@@ -4,8 +4,8 @@ from tensorflow.python.keras import Model
 from typing import Dict, Tuple
 
 from misc_utils.math_utils import lerp
-from custom_tf_models import AE
-from utils import split_steps
+from custom_tf_models.basic import AE
+from custom_tf_models.utils import split_steps
 from misc_utils.train_utils import CustomLearningRateSchedule
 
 
@@ -162,6 +162,24 @@ class IAE(AE):
     def split_inputs(self, inputs, merge_batch_and_steps):
         return split_steps(inputs, self.step_size, merge_batch_and_steps)
 
+    @tf.function
+    def gradient_norm(self, inputs) -> tf.Tensor:
+        with tf.GradientTape() as tape:
+            interpolated = self.interpolate(inputs)
+
+            inputs = inputs[:, self.step_size: - self.step_size]
+            interpolated = interpolated[:, self.step_size: - self.step_size]
+
+            error = tf.reduce_mean(tf.square(interpolated - inputs))
+
+        gradients = tape.gradient(error, self.trainable_variables)
+        gradients = [gradient for gradient in gradients if gradient is not None]
+        norms = [tf.norm(gradient) for gradient in gradients]
+        norm = tf.reduce_sum(norms)
+        norm = tf.reshape(norm, [1, 1])
+
+        return norm
+
     def get_config(self):
         config = {
             "encoder": self.encoder.get_config(),
@@ -183,9 +201,10 @@ class IAE(AE):
     @property
     def additional_test_metrics(self):
         return [
-            self.interpolation_mse,
-            self.interpolation_mae,
-            self.latent_code_surprisal,
+            # self.interpolation_mse,
+            # self.interpolation_mae,
+            # self.latent_code_surprisal,
+            self.gradient_norm,
         ]
 
 

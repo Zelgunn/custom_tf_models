@@ -5,7 +5,7 @@ from typing import Tuple, Dict, Any
 
 from misc_utils.math_utils import lerp
 from custom_tf_models import IAE
-from adversarial import gan_loss, gradient_penalty
+from custom_tf_models.adversarial import GANLoss, GANLossMode, gradient_penalty
 
 
 class IAEGAN(IAE):
@@ -116,6 +116,7 @@ class IAEGAN(IAE):
             generator_adversarial_loss = fake_logits
             discriminator_adversarial_loss = real_logits - fake_logits
         else:
+            gan_loss = GANLoss(mode=GANLossMode.VANILLA)
             generator_adversarial_loss = gan_loss(fake_discriminated, is_real=True)
             discriminator_adversarial_loss = (
                     gan_loss(fake_discriminated, is_real=False) +

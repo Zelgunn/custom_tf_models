@@ -1,4 +1,4 @@
-from energy_based import EnergyStateFunction
+from custom_tf_models.energy_based import EnergyStateFunction
 
 
 class IdentityESF(EnergyStateFunction):

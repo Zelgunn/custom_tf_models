@@ -1,19 +1,11 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.python.keras import Model
-from enum import IntEnum
 from typing import Tuple, Dict
 
 from custom_tf_models import VAE
-from basic.VAE import get_reference_distribution
-from misc_utils.math_utils import lerp
-from utils import reduce_sum_from
-
-
-class GANLossTarget(IntEnum):
-    GENERATOR_FAKE = 0,
-    DISCRIMINATOR_FAKE = 1,
-    DISCRIMINATOR_REAL = 2
+from custom_tf_models.basic.VAE import get_reference_distribution
+from custom_tf_models.adversarial import GANLoss, GANLossMode
 
 
 class VAEGAN(VAE):
@@ -127,6 +119,7 @@ class VAEGAN(VAE):
         kl_divergence = tf.maximum(kl_divergence, 0.0)
         kl_divergence = tf.reduce_mean(kl_divergence)
 
+        gan_loss = GANLoss(mode=GANLossMode.VANILLA)
         decoder_fake_loss = gan_loss(discriminated_decoded, is_real=True)
         generator_fake_loss = gan_loss(discriminated_generated, is_real=True)
         discriminator_real_loss = gan_loss(discriminated_inputs, is_real=True)
@@ -177,29 +170,3 @@ class VAEGAN(VAE):
         return {self.encoder: "encoder",
                 self.decoder: "decoder",
                 self.discriminator: "discriminator"}
-
-
-@tf.function
-def gan_loss(logits: tf.Tensor, is_real: bool) -> tf.Tensor:
-    labels = tf.ones_like(logits) if is_real else tf.zeros_like(logits)
-    loss = tf.nn.sigmoid_cross_entropy_with_logits(labels, logits)
-    loss = tf.reduce_mean(loss)
-    return loss
-
-
-def gradient_penalty(real: tf.Tensor, fake: tf.Tensor, discriminator: Model, seed=None) -> tf.Tensor:
-    fake = tf.stop_gradient(fake)
-    batch_size = tf.shape(real)[0]
-    factors_shape = [batch_size] + [1] * (real.shape.rank - 1)
-    factors = tf.random.uniform(shape=factors_shape, minval=0.0, maxval=1.0, dtype=tf.float32, seed=seed)
-    x_hat = lerp(real, fake, factors)
-
-    with tf.GradientTape() as tape:
-        tape.watch(x_hat)
-        discriminated = discriminator(x_hat)
-
-    gradients = tape.gradient(discriminated, x_hat)
-    penalty = tf.sqrt(reduce_sum_from(tf.square(gradients)))
-    penalty = tf.reduce_mean(tf.square(penalty - 1.0))
-
-    return penalty

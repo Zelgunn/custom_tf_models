@@ -1,4 +1,4 @@
-from tensorflow_core.python.keras import Model
+from tensorflow.python.keras import Model
 from tensorflow.python.keras.layers import Layer, Input, Dense, Flatten, Reshape, Add
 from tensorflow.python.keras.layers import Conv1D, Conv2D, Conv3D
 from tensorflow.python.keras.layers import Conv2DTranspose, Conv3DTranspose

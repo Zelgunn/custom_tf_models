@@ -4,7 +4,7 @@ import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import Dict
 
-from custom_tf_models import AE
+from custom_tf_models.basic import AE
 
 
 class AEP(AE):

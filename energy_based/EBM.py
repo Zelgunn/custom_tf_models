@@ -1,11 +1,11 @@
 # EBAE : Energy-based Model
 import tensorflow as tf
-from tensorflow_core.python.keras import Model
+from tensorflow.python.keras import Model
 from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from typing import Dict, Tuple, Union, List
 
 from custom_tf_models import CustomModel
-from energy_based import EnergyStateFunction, InputsTensor
+from custom_tf_models.energy_based import EnergyStateFunction, InputsTensor
 
 
 class EBM(CustomModel):

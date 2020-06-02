@@ -4,7 +4,7 @@ import tensorflow_probability as tfp
 from tensorflow.python.keras import Model
 from typing import Tuple
 
-from custom_tf_models import AE
+from custom_tf_models.basic import AE
 
 
 class VAE(AE):

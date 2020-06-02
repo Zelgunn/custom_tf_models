@@ -79,6 +79,14 @@ def reduce_adjusted_std_from(inputs: tf.Tensor, start_axis=1, keepdims=False) ->
     return reduce_from(inputs, start_axis, reduce_adjusted_stddev, keepdims=keepdims)
 
 
+def reduce_min_from(inputs: tf.Tensor, start_axis=1, keepdims=False) -> tf.Tensor:
+    return reduce_from(inputs, start_axis, tf.reduce_min, keepdims=keepdims)
+
+
+def reduce_max_from(inputs: tf.Tensor, start_axis=1, keepdims=False) -> tf.Tensor:
+    return reduce_from(inputs, start_axis, tf.reduce_max, keepdims=keepdims)
+
+
 def reduce_from(inputs: tf.Tensor, start_axis: int, fn: Callable, **kwargs):
     if start_axis < 0:
         start_axis = inputs.shape.rank + start_axis

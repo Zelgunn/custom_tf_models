@@ -2,7 +2,7 @@ import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import List, Tuple
 
-from energy_based import EBM, EnergyStateFunction
+from custom_tf_models.energy_based import EBM, EnergyStateFunction
 
 
 class JEM(EBM):

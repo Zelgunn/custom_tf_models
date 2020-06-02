@@ -1,6 +1,6 @@
 from typing import List, Union, Tuple
 
-from energy_based import EnergyStateFunction, InputsTensor
+from custom_tf_models.energy_based import EnergyStateFunction, InputsTensor
 
 
 class CombineESF(EnergyStateFunction):

@@ -1,9 +1,9 @@
 import tensorflow as tf
-from tensorflow_core.python.keras import Model
+from tensorflow.python.keras import Model
 from typing import Dict
 
 from custom_tf_models import AE
-from utils import split_steps
+from custom_tf_models.utils import split_steps
 from CustomKerasLayers.models.ConvAM import compute_autoregression_loss
 
 

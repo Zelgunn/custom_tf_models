@@ -1,7 +1,7 @@
 import tensorflow as tf
 from abc import abstractmethod
 
-from energy_based import EnergyStateFunction
+from custom_tf_models.energy_based import EnergyStateFunction
 
 
 class ApplyOnRandomInput(EnergyStateFunction):

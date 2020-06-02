@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow_datasets as tfd
 
-from adversarial.VAEGAN import VAEGAN
+from custom_tf_models.adversarial.VAEGAN import VAEGAN
 
 
 def make_encoder(input_shape, code_size: int):

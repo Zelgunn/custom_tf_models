@@ -4,7 +4,7 @@ from tensorflow.python.keras import Model
 from typing import Dict, Tuple
 
 from custom_tf_models import CustomModel, AE
-from adversarial import gradient_penalty
+from custom_tf_models.adversarial import gradient_penalty, GANLoss, GANLossMode
 
 
 class CoupledVAEGANs(CustomModel):
@@ -23,6 +23,7 @@ class CoupledVAEGANs(CustomModel):
                  gradient_penalty_loss_weight=1e+1,
                  domain_1_name="1",
                  domain_2_name="2",
+                 gan_loss_mode=GANLossMode.LS_GAN,
                  seed=None,
                  **kwargs
                  ):
@@ -46,6 +47,7 @@ class CoupledVAEGANs(CustomModel):
         self.domain_1_name = domain_1_name
         self.domain_2_name = domain_2_name
 
+        self.gan_loss = GANLoss(mode=gan_loss_mode)
         self.seed = seed
 
     @tf.function
@@ -83,10 +85,11 @@ class CoupledVAEGANs(CustomModel):
         z_1 = self.encode_1(x_1)
         z_2 = self.encode_2(x_2)
 
-        x_1_1 = self.decode_1(z_1)
         x_1_2 = self.decode_2(z_1)
         x_2_1 = self.decode_1(z_2)
-        x_2_2 = self.decode_2(z_2)
+
+        x_1_1 = self.decode_1(self.encode_2(x_1))
+        x_2_2 = self.decode_2(self.encode_1(x_2))
 
         z_1_2 = self.encode_2(x_1_2)
         z_2_1 = self.encode_1(x_2_1)
@@ -111,22 +114,29 @@ class CoupledVAEGANs(CustomModel):
         # endregion
 
         # region Divergence loss
-        z_1_divergence = self.divergence_loss(z_1)
-        z_2_divergence = self.divergence_loss(z_2)
-        z_1_2_divergence = self.divergence_loss(z_1_2)
-        z_2_1_divergence = self.divergence_loss(z_2_1)
-        base_divergence_loss = z_1_divergence + z_2_divergence
-        cycle_divergence_loss = z_1_2_divergence + z_2_1_divergence
-        divergence_loss = (
-                base_divergence_loss * self.base_divergence_loss_weight +
-                cycle_divergence_loss * self.cycle_divergence_loss_weight
-        )
+        if self.base_divergence_loss_weight > 0.0:
+            z_1_divergence = self.divergence_loss(z_1 - z_1_2)
+            z_2_divergence = self.divergence_loss(z_2 - z_2_1)
+            base_divergence_loss = (z_1_divergence + z_2_divergence) * 0.5
+            base_divergence_loss *= self.base_divergence_loss_weight
+        else:
+            base_divergence_loss = 0.0
+
+        if self.cycle_divergence_loss_weight > 0.0:
+            z_1_2_divergence = self.divergence_loss(z_1_2)
+            z_2_1_divergence = self.divergence_loss(z_2_1)
+            cycle_divergence_loss = (z_1_2_divergence + z_2_1_divergence) * 0.5
+            cycle_divergence_loss *= self.cycle_divergence_loss_weight
+        else:
+            cycle_divergence_loss = 0.0
+
+        divergence_loss = base_divergence_loss + cycle_divergence_loss
         # endregion
 
         # region Adversarial loss
-        x_1_2_discriminated = tf.reduce_mean(self.discriminator_2(x_1_2))
-        x_2_1_discriminated = tf.reduce_mean(self.discriminator_1(x_2_1))
-        adversarial_loss = (x_1_2_discriminated + x_2_1_discriminated) * self.adversarial_loss_weight
+        x_1_2_adversarial_loss = self.gan_loss(predicted=self.discriminator_2(x_1_2), is_real=True)
+        x_2_1_adversarial_loss = self.gan_loss(predicted=self.discriminator_1(x_2_1), is_real=True)
+        adversarial_loss = (x_1_2_adversarial_loss + x_2_1_adversarial_loss) * self.adversarial_loss_weight
         # endregion
 
         return reconstruction_loss, divergence_loss, adversarial_loss
@@ -155,11 +165,15 @@ class CoupledVAEGANs(CustomModel):
         # endregion
 
         # region Gradient penalty
-        gradient_penalty_loss_1 = gradient_penalty(real=x_1, fake=x_2_1, discriminator=self.discriminator_1,
-                                                   seed=self.seed)
-        gradient_penalty_loss_2 = gradient_penalty(real=x_2, fake=x_1_2, discriminator=self.discriminator_2,
-                                                   seed=self.seed)
-        gradient_penalty_loss = (gradient_penalty_loss_1 + gradient_penalty_loss_2) * self.gradient_penalty_loss_weight
+        if self.gan_loss.mode == GANLossMode.W_GAN_GP:
+            gradient_penalty_loss_1 = gradient_penalty(real=x_1, fake=x_2_1, discriminator=self.discriminator_1,
+                                                       seed=self.seed)
+            gradient_penalty_loss_2 = gradient_penalty(real=x_2, fake=x_1_2, discriminator=self.discriminator_2,
+                                                       seed=self.seed)
+            gradient_penalty_loss = (gradient_penalty_loss_1 + gradient_penalty_loss_2) * 0.5
+            gradient_penalty_loss = gradient_penalty_loss * self.gradient_penalty_loss_weight
+        else:
+            gradient_penalty_loss = tf.constant(0.0, name="NoGradientPenalty")
         # endregion
 
         return discriminators_loss, gradient_penalty_loss
@@ -167,15 +181,16 @@ class CoupledVAEGANs(CustomModel):
     # region Loss helpers
     @staticmethod
     def reconstruction_loss(x_true, x_pred):
-        return tf.reduce_mean(tf.abs(x_true - x_pred))
+        return tf.reduce_mean(tf.square(x_true - x_pred))
 
     @staticmethod
     def divergence_loss(z):
         return tf.reduce_mean(tf.square(z))
 
-    @staticmethod
-    def discriminator_loss(real_discriminated, fake_discriminated):
-        return tf.reduce_mean(real_discriminated) - tf.reduce_mean(fake_discriminated)
+    def discriminator_loss(self, real_discriminated, fake_discriminated):
+        real_loss = self.gan_loss(predicted=real_discriminated, is_real=True)
+        fake_loss = self.gan_loss(predicted=fake_discriminated, is_real=False)
+        return real_loss + fake_loss
 
     # endregion
 
@@ -297,5 +312,8 @@ class CoupledVAEGANs(CustomModel):
 
             "domain_1_name": self.domain_1_name,
             "domain_2_name": self.domain_2_name,
+
+            "gan_loss_mode": self.gan_loss.mode,
+            "seed": self.seed,
         }
     # endregion

@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from energy_based import TakeStepESF, ApplyOnRandomInput
+from custom_tf_models.energy_based import TakeStepESF, ApplyOnRandomInput
 
 
 class OffsetSequences(TakeStepESF, ApplyOnRandomInput):

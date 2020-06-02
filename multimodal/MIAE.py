@@ -3,7 +3,7 @@ import tensorflow as tf
 from typing import List, Tuple
 
 from custom_tf_models import IAE
-from multimodal import MMAE
+from custom_tf_models.multimodal import MMAE
 from utils import split_steps
 
 

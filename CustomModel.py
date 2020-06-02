@@ -51,7 +51,7 @@ class CustomModel(Model):
         train_aggregator = LossAggregator(use_steps=True, num_samples=steps_per_epoch)
         val_aggregator = LossAggregator(use_steps=True, num_samples=validation_steps)
 
-        iterator = iterator_ops.IteratorV2(x)
+        iterator = iterator_ops.OwnedIterator(x)
         # noinspection PyUnresolvedReferences
         self.train_step.get_concrete_function(iterator.next())
 

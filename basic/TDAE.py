@@ -1,7 +1,7 @@
 # TDAE : Time Distributed Autoencoder
 import tensorflow as tf
 
-from custom_tf_models import AE
+from custom_tf_models.basic import AE
 
 
 class TDAE(AE):

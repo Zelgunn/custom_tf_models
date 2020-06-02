@@ -3,7 +3,7 @@ import tensorflow as tf
 from typing import Union, List
 
 from custom_tf_models import CustomModel
-from energy_based import EBM, EnergyStateFunction
+from custom_tf_models.energy_based import EBM, EnergyStateFunction
 
 
 class EBAE(EBM):
