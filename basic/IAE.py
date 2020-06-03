@@ -201,10 +201,10 @@ class IAE(AE):
     @property
     def additional_test_metrics(self):
         return [
-            # self.interpolation_mse,
-            # self.interpolation_mae,
-            # self.latent_code_surprisal,
-            self.gradient_norm,
+            self.interpolation_mse,
+            self.interpolation_mae,
+            self.latent_code_surprisal,
+            # self.gradient_norm,
         ]
 
 
