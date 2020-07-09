@@ -26,7 +26,7 @@ class AE(CustomModel):
             self.set_optimizer(tf.keras.optimizers.Adam(learning_rate=learning_rate))
 
     def call(self, inputs, training=None, mask=None):
-        return self.decode(self.encode(inputs))
+        return self.autoencode(inputs)
 
     @tf.function
     def encode(self, inputs):
@@ -35,6 +35,10 @@ class AE(CustomModel):
     @tf.function
     def decode(self, inputs):
         return self.decoder(inputs)
+
+    @tf.function
+    def autoencode(self, inputs):
+        return self.decode(self.encode(inputs))
 
     @property
     def metrics_names(self):

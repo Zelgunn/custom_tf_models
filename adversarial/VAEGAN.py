@@ -44,7 +44,8 @@ class VAEGAN(VAE):
         self.discriminator_optimizer = tf.keras.optimizers.Adam(self._get_discriminator_learning_rate,
                                                                 beta_1=0.5, beta_2=0.999)
 
-    def call(self, inputs, training=None, mask=None):
+    @tf.function
+    def autoencode(self, inputs):
         latent_distribution = self.get_latent_distribution(inputs)
         z = latent_distribution.sample()
         decoded = self.decoder(z)

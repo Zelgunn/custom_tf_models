@@ -24,7 +24,8 @@ class AEP(AE):
         self.input_length = input_length
         self.use_temporal_loss = use_temporal_loss
 
-    def call(self, inputs, training=None, mask=None):
+    @tf.function
+    def autoencode(self, inputs):
         encoded = self.encode(inputs)
         decoded = self.decode(encoded)
         predicted = self.predictor(encoded)

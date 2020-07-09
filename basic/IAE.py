@@ -24,11 +24,16 @@ class IAE(AE):
         self.step_size = step_size
         self.seed = seed
 
-    def call(self, inputs, training=None, mask=None):
+    @tf.function
+    def autoencode(self, inputs):
         inputs, inputs_shape, new_shape = self.split_inputs(inputs, merge_batch_and_steps=True)
-        decoded = self.decode(self.encode(inputs))
+        decoded = self.decoder(self.encoder(inputs))
         decoded = tf.reshape(decoded, inputs_shape)
         return decoded
+
+    def encode(self, inputs):
+        inputs, _, _ = self.split_inputs(inputs, merge_batch_and_steps=True)
+        return self.encoder(inputs)
 
     def decode(self, inputs):
         decoded = self.decoder(inputs)
@@ -48,8 +53,8 @@ class IAE(AE):
         target = inputs[:, offset:offset + self.step_size]
 
         factor = tf.cast(offset / max_offset, tf.float32)
-        start_encoded = self.encode(start)
-        end_encoded = self.encode(end)
+        start_encoded = self.encoder(start)
+        end_encoded = self.encoder(end)
         latent_code = lerp(start_encoded, end_encoded, factor)
 
         decoded = self.decoder(latent_code)
@@ -77,7 +82,7 @@ class IAE(AE):
     def interpolate(self, inputs):
         inputs_shape = tf.shape(inputs)
         encoded = self.get_interpolated_latent_code(inputs, merge_batch_and_steps=True)
-        decoded = self.decode(encoded)
+        decoded = self.decoder(encoded)
         decoded = tf.reshape(decoded, inputs_shape)
         return decoded
 
@@ -124,7 +129,7 @@ class IAE(AE):
 
         inputs = inputs[:, self.step_size: - self.step_size]
         inputs, _, __ = self.split_inputs(inputs, merge_batch_and_steps=True)
-        default_latent_code = self.encode(inputs)
+        default_latent_code = self.encoder(inputs)
         default_latent_code = tf.reshape(default_latent_code, tf.shape(interpolated_latent_code))
 
         cosine_distance = tf.losses.cosine_similarity(default_latent_code, interpolated_latent_code,
@@ -135,8 +140,8 @@ class IAE(AE):
         inputs, _, new_shape = self.split_inputs(inputs, merge_batch_and_steps=False)
         batch_size, step_count, *_ = new_shape
 
-        encoded_first = self.encode(inputs[:, 0])
-        encoded_last = self.encode(inputs[:, -1])
+        encoded_first = self.encoder(inputs[:, 0])
+        encoded_last = self.encoder(inputs[:, -1])
 
         encoded_shape_dimensions = tf.unstack(tf.shape(encoded_first)[1:])
         tile_multiples = [1, step_count] + [1] * (len(inputs.shape) - 2)
