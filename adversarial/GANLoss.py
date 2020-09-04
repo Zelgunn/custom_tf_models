@@ -2,8 +2,7 @@ import tensorflow as tf
 from tensorflow.python.keras import Model
 from enum import IntEnum
 
-from misc_utils.math_utils import lerp
-from custom_tf_models.utils import reduce_sum_from
+from misc_utils.math_utils import lerp, reduce_sum_from
 
 
 class GANLossMode(IntEnum):

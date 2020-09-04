@@ -41,7 +41,19 @@ class IAEGAN(IAE):
         self.optimizer.apply_gradients(zip(autoencoder_gradients, self.autoencoder_trainable_variables))
         self.discriminator.optimizer.apply_gradients(zip(disc_gradients, self.discriminator_trainable_variables))
 
-        return losses
+        (
+            reconstruction_loss,
+            generator_adversarial_loss,
+            discriminator_adversarial_loss,
+            gradient_penalty_loss
+        ) = losses
+
+        return {
+            "reconstruction_loss": reconstruction_loss,
+            "generator_adversarial_loss": generator_adversarial_loss,
+            "discriminator_adversarial_loss": discriminator_adversarial_loss,
+            "gradient_penalty_loss": gradient_penalty_loss,
+        }
 
     @tf.function
     def compute_gradients(self, inputs):

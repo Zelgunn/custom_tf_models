@@ -5,11 +5,10 @@ from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from tensorflow.python.keras.callbacks import CallbackList
 from typing import Dict
 
-from custom_tf_models import CustomModel
 from misc_utils.train_utils import CustomLearningRateSchedule
 
 
-class AE(CustomModel):
+class AE(Model):
     def __init__(self,
                  encoder: Model,
                  decoder: Model,
@@ -40,26 +39,28 @@ class AE(CustomModel):
     def autoencode(self, inputs):
         return self.decode(self.encode(inputs))
 
-    @property
-    def metrics_names(self):
-        return ["reconstruction"]
-
     @tf.function
-    def train_step(self, inputs, *args, **kwargs):
+    def train_step(self, data) -> Dict[str, tf.Tensor]:
         with tf.GradientTape() as tape:
-            loss = self.compute_loss(inputs)
+            metrics = self.compute_loss(data)
+            loss = metrics["loss"]
 
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
-        return loss
+        return metrics
+
+    @tf.function
+    def test_step(self, data):
+        return self.compute_loss(data)
 
     @tf.function
     def compute_loss(self,
                      inputs
-                     ) -> tf.Tensor:
+                     ) -> Dict[str, tf.Tensor]:
         outputs = self(inputs)
-        return tf.reduce_mean(tf.square(inputs - outputs))
+        loss = tf.reduce_mean(tf.square(inputs - outputs))
+        return {"loss": loss}
 
     def on_train_begin(self, callbacks: CallbackList, initial_epoch: int, steps_per_epoch: int):
         super(AE, self).on_train_begin(callbacks, initial_epoch, steps_per_epoch)
@@ -79,13 +80,6 @@ class AE(CustomModel):
             "learning_rate": self.learning_rate
         }
         return config
-
-    @property
-    def models_ids(self) -> Dict[Model, str]:
-        return {
-            self.encoder: "encoder",
-            self.decoder: "decoder"
-        }
 
     @property
     def optimizers_ids(self) -> Dict[OptimizerV2, str]:

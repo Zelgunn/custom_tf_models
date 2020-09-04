@@ -1,59 +1,76 @@
 # EBAE : Energy-based Autoencoder
 import tensorflow as tf
-from typing import Union, List
+from tensorflow.python.keras.models import Model
+from typing import List, Tuple
 
-from custom_tf_models import CustomModel
 from custom_tf_models.energy_based import EBM, EnergyStateFunction
+from custom_tf_models import AE
+
+
+class EnergyModel(Model):
+    def __init__(self, autoencoder: AE, **kwargs):
+        super(EnergyModel, self).__init__(**kwargs)
+        self.autoencoder = autoencoder
+
+    def call(self, inputs, training=None, mask=None):
+        outputs = self.autoencoder(inputs)
+        reduction_axis = tuple(range(1, inputs.shape.rank))
+        return tf.reduce_mean(tf.square(inputs - outputs), axis=reduction_axis)
+
+    def get_config(self):
+        return {
+            "autoencoder": self.autoencoder.get_config()
+        }
 
 
 class EBAE(EBM):
     def __init__(self,
-                 autoencoder: CustomModel,
+                 encoder: Model,
+                 decoder: Model,
                  energy_state_functions: List[EnergyStateFunction],
                  energy_margin: float = None,
+                 learning_rate=1e-3,
+                 weights_decay=2e-6,
+                 seed=None,
                  **kwargs
                  ):
-        super(EBAE, self).__init__(energy_model=autoencoder,
+        energy_model = EnergyModel(autoencoder=AE(encoder=encoder, decoder=decoder))
+        super(EBAE, self).__init__(energy_model=energy_model,
                                    energy_state_functions=energy_state_functions,
-                                   optimizer=autoencoder.optimizer,
+                                   optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
                                    energy_margin=energy_margin,
-                                   energy_model_uses_ground_truth=True,
+                                   weights_decay=weights_decay,
+                                   seed=seed,
                                    **kwargs)
-        self.autoencoder = self.energy_model
 
-    def call(self, inputs, training=None, mask=None) -> Union[tf.Tensor, List[tf.Tensor]]:
-        ground_truth, inputs = inputs
-        outputs = self.autoencoder(inputs)
-        if isinstance(ground_truth, (tuple, list)):
-            energies = [self.compute_energy(x, y) for x, y in zip(ground_truth, outputs)]
-            return energies
-        else:
-            energy = self.compute_energy(ground_truth, outputs)
-            return energy
-
-    @tf.function
-    def compute_energy(self, inputs, outputs):
-        reduction_axis = tuple(range(1, inputs.shape.rank))
-        return tf.reduce_mean(tf.square(inputs - outputs), axis=reduction_axis)
-
-    def compute_loss_for_energy(self, inputs, low_energy: bool):
+    def compute_loss_for_energy(self, inputs, low_energy: bool) -> Tuple[tf.Tensor, tf.Tensor]:
         energy_states = self.get_energy_states(inputs, low_energy=low_energy)
-
         losses = []
+        energies = []
         for state in energy_states:
-            energy = self(state, sum_energies=True)
+            energy = self(state)
+            if low_energy:
+                loss = energy
+            else:
+                loss = tf.nn.relu(self.energy_margin - energy)
+
+            energy -= self.energy_margin
+            # TMP
             if not low_energy:
-                energy = tf.nn.relu(self.energy_margin - energy)
-            losses.append(energy)
+                rev_state = tf.reverse(state, axis=(1,))
+                delta = tf.abs(state - rev_state)
+                delta = tf.reduce_mean(delta, axis=[1, 2, 3, 4])
+                mask = tf.cast(delta > 1e-2, tf.float32)
+                loss *= mask
+                energy *= mask
 
-        loss = tf.reduce_mean(tf.stack(losses, axis=0), axis=0)
-        return loss
+            losses.append(loss)
+            energies.append(energy)
 
-    @tf.function
-    def forward(self, inputs):
-        return self((inputs, inputs))
+        loss = tf.reduce_mean(losses)
+        energy = tf.reduce_mean(tf.stack(energies, axis=0), axis=0)
+        return loss, energy
 
-    def get_config(self):
-        config = super(EBAE, self).get_config()
-        config.pop("energy_model_uses_ground_truth")
-        return config
+    @property
+    def autoencoder(self):
+        return self.energy_model.autoencoder

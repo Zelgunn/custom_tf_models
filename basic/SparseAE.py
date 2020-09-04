@@ -1,6 +1,7 @@
 # SparseAE : Sparse Autoencoder
 import tensorflow as tf
 from tensorflow.python.keras import Model
+from typing import Dict
 
 from custom_tf_models.basic import AE
 
@@ -21,16 +22,16 @@ class SparseAE(AE):
     @tf.function
     def compute_loss(self,
                      inputs
-                     ) -> tf.Tensor:
+                     ) -> Dict[str, tf.Tensor]:
         encoded = self.encode(inputs)
         decoded = self.decode(encoded)
 
         batch_size = tf.shape(inputs)[0]
         activity_regularization = tf.reduce_sum(encoded) / batch_size * self.activity_regularization_factor
-
         reconstruction_error = tf.reduce_mean(tf.square(inputs - decoded))
+        loss = reconstruction_error + activity_regularization
 
-        return reconstruction_error + activity_regularization
+        return {"loss": loss, "reconstruction": reconstruction_error, "activity": activity_regularization}
 
     def get_config(self):
         config = {

@@ -9,9 +9,7 @@ class NoisyInput(ApplyOnRandomInput):
                  seed,
                  gaussian_noise_stddev: float,
                  output_range: Tuple[float, float] = None):
-        super(NoisyInput, self).__init__(is_low_energy=True,
-                                         ground_truth_from_inputs=False,
-                                         seed=seed)
+        super(NoisyInput, self).__init__(is_low_energy=True, seed=seed)
         self.gaussian_noise_stddev = gaussian_noise_stddev
         self.output_range = output_range
 

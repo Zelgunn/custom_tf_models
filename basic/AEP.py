@@ -40,13 +40,13 @@ class AEP(AE):
     @tf.function
     def compute_loss(self,
                      inputs
-                     ) -> tf.Tensor:
+                     ) -> Dict[str, tf.Tensor]:
         outputs = self(inputs)
-        reconstruction_error = tf.reduce_mean(tf.square(inputs - outputs))
+        loss = tf.reduce_mean(tf.square(inputs - outputs))
         if self.use_temporal_loss:
             output_length = tf.shape(outputs)[1] - self.input_length
-            reconstruction_error *= get_temporal_loss_weights(self.input_length, output_length)
-        return reconstruction_error
+            loss *= get_temporal_loss_weights(self.input_length, output_length)
+        return {"loss": loss}
 
     def get_config(self):
         config = {
@@ -58,12 +58,6 @@ class AEP(AE):
             "use_temporal_loss": self.use_temporal_loss
         }
         return config
-
-    @property
-    def models_ids(self) -> Dict[Model, str]:
-        return {self.encoder: "encoder",
-                self.decoder: "decoder",
-                self.predictor: "predictor"}
 
 
 @tf.function

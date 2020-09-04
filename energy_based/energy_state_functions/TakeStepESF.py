@@ -8,8 +8,7 @@ class TakeStepESF(EnergyStateFunction):
                  step_count: int,
                  axis=1,
                  ):
-        super(TakeStepESF, self).__init__(is_low_energy=True,
-                                          ground_truth_from_inputs=True)
+        super(TakeStepESF, self).__init__(is_low_energy=True)
         self.step_count = step_count
         self.axis = axis
 

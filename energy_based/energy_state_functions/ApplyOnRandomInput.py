@@ -7,11 +7,9 @@ from custom_tf_models.energy_based import EnergyStateFunction
 class ApplyOnRandomInput(EnergyStateFunction):
     def __init__(self,
                  is_low_energy: bool,
-                 ground_truth_from_inputs: bool,
                  seed,
                  ):
-        super(ApplyOnRandomInput, self).__init__(is_low_energy=is_low_energy,
-                                                 ground_truth_from_inputs=ground_truth_from_inputs)
+        super(ApplyOnRandomInput, self).__init__(is_low_energy=is_low_energy)
         self.seed = seed
 
     def call(self, inputs):

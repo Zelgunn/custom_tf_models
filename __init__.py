@@ -18,3 +18,8 @@ from custom_tf_models.basic.IAE import IAE
 
 # noinspection PyUnresolvedReferences
 from custom_tf_models.basic.TDAE import TDAE
+
+# noinspection PyUnresolvedReferences
+from custom_tf_models.basic.MinimalistDescriptor import MinimalistDescriptor
+# from custom_tf_models.basic.MinimalistDescriptorV2 import MinimalistDescriptorV2 as MinimalistDescriptor
+

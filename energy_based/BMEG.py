@@ -5,7 +5,8 @@ from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from typing import Dict, Union, List
 
 from custom_tf_models import CustomModel
-from utils import gradient_difference_loss, reduce_mean_from
+from utils import gradient_difference_loss
+from misc_utils.math_utils import reduce_mean_from
 
 
 class ModalityModels(Model):

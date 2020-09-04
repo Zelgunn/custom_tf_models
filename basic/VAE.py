@@ -2,7 +2,7 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.python.keras import Model
-from typing import Tuple
+from typing import Dict
 
 from custom_tf_models.basic import AE
 
@@ -37,22 +37,9 @@ class VAE(AE):
         return self.get_latent_distribution(inputs).sample()
 
     @tf.function
-    def train_step(self, inputs):
-        with tf.GradientTape() as tape:
-            reconstruction_loss, kl_divergence = self.compute_loss(inputs)
-            loss = reconstruction_loss + kl_divergence
-
-        gradients = tape.gradient(loss, self.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-
-        reconstruction_loss /= self.reconstruction_loss_factor
-
-        return reconstruction_loss, kl_divergence
-
-    @tf.function
     def compute_loss(self,
                      inputs
-                     ) -> Tuple[tf.Tensor, tf.Tensor]:
+                     ) -> Dict[str, tf.Tensor]:
         latent_distribution = self.get_latent_distribution(inputs)
         reference_distribution = get_reference_distribution(latent_distribution)
         latent_code = latent_distribution.sample()
@@ -61,8 +48,9 @@ class VAE(AE):
         reconstruction_loss = tf.reduce_mean(tf.square(inputs - decoded))
         kl_divergence = tf.reduce_mean(tfp.distributions.kl_divergence(latent_distribution, reference_distribution))
         kl_divergence *= self.kl_divergence_loss_factor
+        loss = reconstruction_loss + kl_divergence
 
-        return reconstruction_loss, kl_divergence
+        return {"loss": loss, "reconstruction": reconstruction_loss, "kl_divergence": kl_divergence}
 
     def get_config(self):
         return {
@@ -72,10 +60,6 @@ class VAE(AE):
             "kl_divergence_factor": self.kl_divergence_loss_factor,
             "seed": self.seed,
         }
-
-    @property
-    def metrics_names(self):
-        return ["reconstruction", "kl_divergence"]
 
 
 def get_reference_distribution(latent_distribution: tfp.distributions.MultivariateNormalDiag

@@ -42,7 +42,7 @@ class IAE(AE):
     @tf.function
     def compute_loss(self,
                      inputs
-                     ) -> Tuple[tf.Tensor, tf.Tensor]:
+                     ) -> Dict[str, tf.Tensor]:
         # region Forward
         start = inputs[:, :self.step_size]
         end = inputs[:, -self.step_size:]
@@ -63,20 +63,9 @@ class IAE(AE):
         reconstruction_loss = tf.square(target - decoded)
         reconstruction_loss = tf.reduce_mean(reconstruction_loss)
 
-        total_loss = reconstruction_loss
+        loss = reconstruction_loss
 
-        return total_loss, reconstruction_loss
-
-    @tf.function
-    def train_step(self, inputs, *args, **kwargs):
-        with tf.GradientTape() as tape:
-            losses = self.compute_loss(inputs)
-            total_loss = losses[0]
-
-        gradients = tape.gradient(total_loss, self.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-
-        return losses
+        return {"loss": loss, "reconstruction_loss": reconstruction_loss}
 
     @tf.function
     def interpolate(self, inputs):

@@ -6,14 +6,11 @@ from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from tensorflow.python.keras.callbacks import Callback, CallbackList, configure_callbacks, make_logs
 from tensorflow.python.keras.callbacks import ModelCheckpoint, TensorBoard, BaseLogger, ProgbarLogger
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
-from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.data.ops.dataset_ops import get_legacy_output_shapes
-import h5py
 from abc import abstractmethod
 from typing import List, Dict, Type, Optional, Union
 
-from misc_utils.train_utils import LossAggregator, SharedHDF5, save_model_to_hdf5
-from misc_utils.train_utils import save_optimizer_weights_to_hdf5_group, load_optimizer_weights_from_hdf5_group
+from misc_utils.train_utils import LossAggregator
 from misc_utils.summary_utils import tf_function_summary
 
 
@@ -121,7 +118,7 @@ class CustomModel(Model):
         tensorboard: Optional[TensorBoard] = get_callback(callbacks, TensorBoard)
 
         if model_checkpoint is not None:
-            model_checkpoint.save_weights_only = True
+            model_checkpoint.save_weights_only = False
 
         if (tensorboard is not None) and (tensorboard.update_freq != "epoch"):
             tensorboard._samples_seen = initial_epoch * steps_per_epoch
@@ -187,48 +184,48 @@ class CustomModel(Model):
         with tensorboard._get_writer(tensorboard._train_run_name).as_default():
             tf_function_summary(self.forward, shapes, name="train_step")
 
-    def save(self,
-             filepath: Union[str, h5py.File],
-             overwrite=True,
-             include_optimizer=True,
-             save_format=None,
-             signatures=None,
-             options=None
-             ):
-        with SharedHDF5(filepath=filepath, mode="w") as file:
-            self.save_weights(filepath=file, overwrite=overwrite, save_format=save_format)
-            if include_optimizer:
-                self.save_optimizers(filepath=file)
-
-    def save_weights(self, filepath: Union[str, h5py.File], overwrite=True, save_format=None):
-        with SharedHDF5(filepath=filepath, mode="w") as file:
-            for model, model_id in self.models_ids.items():
-                save_model_to_hdf5(hdf5_group=file, model=model, model_id=model_id)
-
-    def save_optimizers(self, filepath: Union[str, h5py.File]):
-        with SharedHDF5(filepath=filepath, mode="w") as file:
-            for optimizer, optimizer_id in self.optimizers_ids.items():
-                save_optimizer_weights_to_hdf5_group(hdf5_group=file, optimizer=optimizer, optimizer_id=optimizer_id)
-
-    def load_weights(self,
-                     filepath: str,
-                     by_name=False,
-                     skip_mismatch=False):
-        with SharedHDF5(filepath=filepath, mode="r") as file:
-            for model, model_id in self.models_ids.items():
-                model_group = file["model_{}_weights".format(model_id)]
-                if by_name:
-                    hdf5_format.load_weights_from_hdf5_group_by_name(model_group, model.layers)
-                else:
-                    hdf5_format.load_weights_from_hdf5_group(model_group, model.layers)
-                print("CustomModel - Successfully loaded model `{}` from {}.".format(model_id, filepath))
-        self.checkpoint = filepath
-
-    def load_optimizers_weights(self):
-        with SharedHDF5(filepath=self.checkpoint, mode="r") as file:
-            for optimizer, optimizer_id in self.optimizers_ids.items():
-                load_optimizer_weights_from_hdf5_group(hdf5_group=file, optimizer=optimizer, optimizer_id=optimizer_id)
-                print("CustomModel - Successfully loaded optimizer `{}` from {}.".format(optimizer_id, self.checkpoint))
+    # def save(self,
+    #          filepath: Union[str, h5py.File],
+    #          overwrite=True,
+    #          include_optimizer=True,
+    #          save_format=None,
+    #          signatures=None,
+    #          options=None
+    #          ):
+    #     with SharedHDF5(filepath=filepath, mode="w") as file:
+    #         self.save_weights(filepath=file, overwrite=overwrite, save_format=save_format)
+    #         if include_optimizer:
+    #             self.save_optimizers(filepath=file)
+    #
+    # def save_weights(self, filepath: Union[str, h5py.File], overwrite=True, save_format=None):
+    #     with SharedHDF5(filepath=filepath, mode="w") as file:
+    #         for model, model_id in self.models_ids.items():
+    #             save_model_to_hdf5(hdf5_group=file, model=model, model_id=model_id)
+    #
+    # def save_optimizers(self, filepath: Union[str, h5py.File]):
+    #     with SharedHDF5(filepath=filepath, mode="w") as file:
+    #         for optimizer, optimizer_id in self.optimizers_ids.items():
+    #             save_optimizer_weights_to_hdf5_group(hdf5_group=file, optimizer=optimizer, optimizer_id=optimizer_id)
+    #
+    # def load_weights(self,
+    #                  filepath: str,
+    #                  by_name=False,
+    #                  skip_mismatch=False):
+    #     with SharedHDF5(filepath=filepath, mode="r") as file:
+    #         for model, model_id in self.models_ids.items():
+    #             model_group = file["model_{}_weights".format(model_id)]
+    #             if by_name:
+    #                 hdf5_format.load_weights_from_hdf5_group_by_name(model_group, model.layers)
+    #             else:
+    #                 hdf5_format.load_weights_from_hdf5_group(model_group, model.layers)
+    #             print("CustomModel - Successfully loaded model `{}` from {}.".format(model_id, filepath))
+    #     self.checkpoint = filepath
+    #
+    # def load_optimizers_weights(self):
+    #     with SharedHDF5(filepath=self.checkpoint, mode="r") as file:
+    #         for optimizer, optimizer_id in self.optimizers_ids.items():
+    #             load_optimizer_weights_from_hdf5_group(hdf5_group=file, optimizer=optimizer, optimizer_id=optimizer_id)
+    #             print("CustomModel - Successfully loaded optimizer `{}` from {}.".format(optimizer_id, self.checkpoint))
 
     # endregion
 

@@ -10,9 +10,7 @@ class SplitSequence(ApplyOnRandomInput):
                  gaussian_noise_stddev: float = None,
                  output_range: Tuple[float, float] = None
                  ):
-        super(SplitSequence, self).__init__(is_low_energy=False,
-                                            ground_truth_from_inputs=True,
-                                            seed=seed)
+        super(SplitSequence, self).__init__(is_low_energy=False, seed=seed)
         self.gaussian_noise_stddev = gaussian_noise_stddev
         self.output_range = output_range
 
