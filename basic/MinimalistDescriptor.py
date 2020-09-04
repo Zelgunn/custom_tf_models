@@ -63,7 +63,7 @@ class MinimalistDescriptor(AE):
             return keep_going and below_max_steps
 
         def loop_body(i, keep_going, residual, continue_array, residuals_array):
-            step_residual, step_keep_going = self.main_loop_step(residual)
+            step_residual, step_keep_going = self.main_loop_step(i, residual)
             step_keep_going = tf.where(keep_going, step_keep_going, tf.zeros_like(step_keep_going))
             keep_going = tf.logical_and(keep_going, step_keep_going > 0.5)
 
@@ -104,7 +104,7 @@ class MinimalistDescriptor(AE):
             return keep_going and below_max_steps
 
         def loop_body(i, keep_going, residual):
-            step_residual, step_keep_going = self.main_loop_step(residual)
+            step_residual, step_keep_going = self.main_loop_step(i, residual)
             keep_going = tf.logical_and(keep_going, tf.greater(step_keep_going, 0.5))
 
             expanded_keep_going = tf.reshape(keep_going, [batch_size] + [1] * (residual.shape.rank - 1))
@@ -125,7 +125,7 @@ class MinimalistDescriptor(AE):
         return outputs
 
     @tf.function
-    def main_loop_step(self, residual):
+    def main_loop_step(self, step, residual):
         encoded = self.encoder(residual)
 
         keep_going = self.stop_encoder(encoded)
@@ -134,29 +134,6 @@ class MinimalistDescriptor(AE):
 
         latent_code_rank = encoded.shape.rank
         keep_going_multiplier = tf.reshape(keep_going, [-1] + [1] * (latent_code_rank - 1))
-
-        # encoded = binarize(encoded, 0.0, 50.0)
-        # bins_count = 100
-        # bins_init = tf.zeros(shape=[bins_count], dtype=tf.int32)
-        # tmp = tf.cast(keep_going * (bins_count - 1), tf.int32)
-        # tmp = tf.reshape(tmp, [-1])
-        # tmp_count = tf.shape(tmp)[0]
-        #
-        # def tmp_cond(i, _):
-        #     return i < tmp_count
-        #
-        # def tmp_loop(i, bins):
-        #     bins += tf.one_hot(tmp[i], bins_count, dtype=tf.int32)
-        #     i += 1
-        #     return i, bins
-        #
-        # _, bins_final = tf.while_loop(tmp_cond, tmp_loop, [0, bins_init])
-        # bins_final /= tmp_count
-        # amount = 10
-        # a = tf.reduce_sum(bins_final[:amount])
-        # b = tf.reduce_sum(bins_final[amount:-amount])
-        # c = tf.reduce_sum(bins_final[-amount:])
-        # tf.print(a, b, c)
 
         decoded = self.decoder(encoded * keep_going_multiplier)
         residual -= decoded
@@ -282,7 +259,7 @@ class MinimalistDescriptor(AE):
             metrics = self.compute_loss(data)
             loss = metrics["loss"]
 
-        gradients = tape.gradient(loss, self.trainable_variables)
+        gradients = tape.gradient(loss, self.trainable_variables, unconnected_gradients=tf.UnconnectedGradients.ZERO)
         gradients = [tf.clip_by_value(grad, -1e-2, 1e-2) for grad in gradients]
         # gradients = [tf.clip_by_norm(grad, 1.0) for grad in gradients]
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
