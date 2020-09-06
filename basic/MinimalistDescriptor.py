@@ -150,8 +150,13 @@ class MinimalistDescriptor(AE):
         return current_max_steps
 
     @tf.function
-    def binarize(self, x: tf.Tensor):
-        return binarize(x, self._binarization_threshold, self._binarization_temperature)
+    def binarize(self, x: tf.Tensor, add_noise: bool = False):
+        x = binarize(x, self._binarization_threshold, self._binarization_temperature)
+        if add_noise:
+            noise = tf.stop_gradient(x)
+            noise = tf.cast(tf.math.greater(noise, 0.5), tf.float32) - noise
+            x += noise
+        return x
 
     # endregion
 
