@@ -4,7 +4,7 @@ from typing import Dict
 
 from custom_tf_models import AE
 from misc_utils.general import expand_dims_to_rank
-from misc_utils.math_utils import lerp
+from misc_utils.math_utils import lerp, binarize
 
 
 class MinimalistDescriptor(AE):
@@ -151,11 +151,7 @@ class MinimalistDescriptor(AE):
 
     @tf.function
     def binarize(self, x: tf.Tensor, add_noise: bool = False):
-        x = binarize(x, self._binarization_threshold, self._binarization_temperature)
-        if add_noise:
-            noise = tf.stop_gradient(x)
-            noise = tf.cast(tf.math.greater(noise, 0.5), tf.float32) - noise
-            x += noise
+        x = binarize(x, self._binarization_threshold, self._binarization_temperature, add_noise=add_noise)
         return x
 
     # endregion
@@ -338,14 +334,6 @@ class MinimalistDescriptor(AE):
         return [self.compute_description_length, self.compute_description_length_2]
 
     # endregion
-
-
-@tf.function
-def binarize(x: tf.Tensor,
-             threshold: tf.Tensor,
-             temperature: tf.Tensor
-             ) -> tf.Tensor:
-    return 1.0 / (1.0 + tf.exp(-temperature * (x - threshold)))
 
 
 def main():
