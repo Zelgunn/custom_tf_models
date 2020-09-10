@@ -215,13 +215,6 @@ class IAEGAN(IAE):
         return self.discriminator.trainable_variables
 
     @property
-    def models_ids(self) -> Dict[Model, str]:
-        return {
-            **super(IAEGAN, self).models_ids,
-            self.discriminator: "discriminator"
-        }
-
-    @property
     def optimizers_ids(self) -> Dict[OptimizerV2, str]:
         return {
             self.optimizer: "autoencoder_optimizer",

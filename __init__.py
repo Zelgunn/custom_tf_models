@@ -24,7 +24,9 @@ from custom_tf_models.basic.BinAE import BinAE
 
 # noinspection PyUnresolvedReferences
 from custom_tf_models.basic.MinimalistDescriptor import MinimalistDescriptor
+# noinspection PyUnresolvedReferences
 # from custom_tf_models.basic.MinimalistDescriptorV2 import MinimalistDescriptorV2 as MinimalistDescriptor
 # noinspection PyUnresolvedReferences
 from custom_tf_models.basic.MinimalistDescriptorV3 import MinimalistDescriptorV3
-
+# noinspection PyUnresolvedReferences
+from custom_tf_models.basic.MinimalistDescriptorV4 import MinimalistDescriptorV4

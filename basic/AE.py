@@ -24,6 +24,7 @@ class AE(Model):
         if self.learning_rate is not None:
             self.set_optimizer(tf.keras.optimizers.Adam(learning_rate=learning_rate))
 
+    @tf.function
     def call(self, inputs, training=None, mask=None):
         return self.autoencode(inputs)
 

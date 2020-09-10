@@ -1,7 +1,7 @@
 # IAE : Interpolating Autoencoder
 import tensorflow as tf
 from tensorflow.python.keras import Model
-from typing import Dict, Tuple
+from typing import Dict
 
 from misc_utils.math_utils import lerp
 from custom_tf_models.basic import AE
@@ -31,13 +31,10 @@ class IAE(AE):
         decoded = tf.reshape(decoded, inputs_shape)
         return decoded
 
+    @tf.function
     def encode(self, inputs):
         inputs, _, _ = self.split_inputs(inputs, merge_batch_and_steps=True)
         return self.encoder(inputs)
-
-    def decode(self, inputs):
-        decoded = self.decoder(inputs)
-        return decoded
 
     @tf.function
     def compute_loss(self,
@@ -83,6 +80,7 @@ class IAE(AE):
     def interpolation_mae(self, inputs):
         return self.interpolation_error(inputs, tf.losses.mae)
 
+    @tf.function
     def interpolation_error(self, inputs, metric):
         interpolated = self.interpolate(inputs)
 
@@ -101,6 +99,7 @@ class IAE(AE):
     def interpolation_relative_mae(self, inputs):
         return self.interpolation_relative_error(inputs, tf.losses.mae)
 
+    @tf.function
     def interpolation_relative_error(self, inputs, metric):
         base_error = metric(inputs, self(inputs))
         base_error = tf.reduce_mean(base_error, axis=list(range(2, base_error.shape.rank)))
@@ -125,6 +124,7 @@ class IAE(AE):
                                                       axis=list(range(2, default_latent_code.shape.rank)))
         return cosine_distance
 
+    @tf.function
     def get_interpolated_latent_code(self, inputs, merge_batch_and_steps):
         inputs, _, new_shape = self.split_inputs(inputs, merge_batch_and_steps=False)
         batch_size, step_count, *_ = new_shape
@@ -153,6 +153,7 @@ class IAE(AE):
         error = tf.reduce_mean(error, axis=reduction_axis)
         return error
 
+    @tf.function
     def split_inputs(self, inputs, merge_batch_and_steps):
         return split_steps(inputs, self.step_size, merge_batch_and_steps)
 
@@ -180,17 +181,9 @@ class IAE(AE):
             "decoder": self.decoder.get_config(),
             "step_count": self.step_size,
             "learning_rate": self.learning_rate,
+            "seed": self.seed,
         }
         return config
-
-    @property
-    def metrics_names(self):
-        return ["total_loss", "reconstruction"]
-
-    @property
-    def models_ids(self) -> Dict[Model, str]:
-        return {self.encoder: "encoder",
-                self.decoder: "decoder"}
 
     @property
     def additional_test_metrics(self):
@@ -198,7 +191,6 @@ class IAE(AE):
             self.interpolation_mse,
             self.interpolation_mae,
             self.latent_code_surprisal,
-            # self.gradient_norm,
         ]
 
 
