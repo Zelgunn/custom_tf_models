@@ -1,13 +1,12 @@
 # MMAE : Multi-modal Autoencoder
 import tensorflow as tf
 from tensorflow.python.keras import Model
-from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
-from typing import List, Dict, Tuple
+from typing import List, Dict
 
-from custom_tf_models import CustomModel, AE
+from custom_tf_models import AE
 
 
-class MMAE(CustomModel):
+class MMAE(Model):
     def __init__(self,
                  autoencoders: List[AE],
                  fusion_model: Model,
@@ -46,17 +45,23 @@ class MMAE(CustomModel):
         return outputs
 
     @tf.function
-    def train_step(self, inputs):
+    def train_step(self, inputs) -> Dict[str, tf.Tensor]:
         with tf.GradientTape() as tape:
-            losses = self.compute_loss(inputs)
-            total_loss = losses[0]
+            metrics = self.compute_loss(inputs)
+            loss = metrics["loss"]
 
-        gradients = tape.gradient(total_loss, self.trainable_variables)
+        gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
-        return losses
+        return metrics
 
-    def compute_loss(self, inputs, *args, **kwargs) -> Tuple:
+    @tf.function
+    def test_step(self, inputs) -> Dict[str, tf.Tensor]:
+        return self.compute_loss(inputs)
+
+    # region Loss
+    @tf.function
+    def compute_loss(self, inputs) -> Dict[str, tf.Tensor]:
         if self.modality_count == 2:
             input_1, input_2 = inputs
             return self.compute_loss_for_two(input_1, input_2)
@@ -64,14 +69,18 @@ class MMAE(CustomModel):
             return self.compute_loss_unoptimized(inputs)
 
     @tf.function
-    def compute_loss_for_two(self, input_1, input_2) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    def compute_loss_for_two(self, input_1, input_2) -> Dict[str, tf.Tensor]:
         output_1, output_2 = self([input_1, input_2])
         loss_1 = self.compute_modality_loss(input_1, output_1)
         loss_2 = self.compute_modality_loss(input_2, output_2)
         total_loss = loss_1 + loss_2
-        return total_loss, loss_1, loss_2
+        return {
+            "loss": total_loss,
+            "modality_1_loss": loss_1,
+            "modality_2_loss": loss_2,
+        }
 
-    def compute_loss_unoptimized(self, inputs) -> Tuple[tf.Tensor, ...]:
+    def compute_loss_unoptimized(self, inputs) -> Dict[str, tf.Tensor]:
         outputs = self(inputs)
 
         losses = []
@@ -80,37 +89,27 @@ class MMAE(CustomModel):
             losses.append(modality_loss)
 
         total_loss = tf.reduce_sum(losses)
-        return (total_loss, *losses)
-
-    @tf.function
-    def compute_modality_loss(self, inputs, outputs):
-        return tf.reduce_mean(tf.square(inputs - outputs))
-
-    @property
-    def modality_count(self):
-        return len(self.autoencoders)
-
-    @property
-    def metrics_names(self):
-        return ["reconstruction"] + [ae.name for ae in self.autoencoders]
-
-    def get_config(self):
-        config = {ae.name: ae.get_config() for ae in self.autoencoders}
-        return config
-
-    @property
-    def models_ids(self) -> Dict[Model, str]:
-        ids = {ae: ae.name for ae in self.autoencoders}
-        ids[self.fusion_model] = self.fusion_model.name
-        return ids
-
-    @property
-    def optimizers_ids(self) -> Dict[OptimizerV2, str]:
         return {
-            self.optimizer: "optimizer",
+            "loss": total_loss,
+            **{"modality_{}_loss".format(i + 1): losses[i] for i in range(self.modality_count)}
         }
 
-    def set_optimizer(self, optimizer):
-        self.optimizer = optimizer
-        for ae in self.autoencoders:
-            ae.set_optimizer(optimizer)
+    @tf.function
+    def compute_modality_loss(self, inputs, outputs) -> tf.Tensor:
+        return tf.reduce_mean(tf.square(inputs - outputs))
+
+    # endregion
+
+    # region Properties
+    @property
+    def modality_count(self) -> int:
+        return len(self.autoencoders)
+
+    # endregion
+
+    # region Config
+    def get_config(self):
+        config = {ae.name: ae.get_config() for ae in self.autoencoders}
+        config["concatenate_latent_codes"] = self.concatenate_latent_codes
+        return config
+    # endregion

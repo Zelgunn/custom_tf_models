@@ -1,4 +1,4 @@
-# EBAE : Energy-based Model
+# EBM : Energy-based Model
 import tensorflow as tf
 from tensorflow.python.keras import Model
 from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
@@ -65,8 +65,8 @@ class EBM(Model):
         if (self.weights_decay is not None) and (self.weights_decay > 0.0):
             loss += self.weights_decay_loss(l1=self.weights_decay)
 
-        low_energy_accuracy = tf.reduce_mean(tf.cast(low_energy_value <= 0, tf.float32))
-        high_energy_accuracy = tf.reduce_mean(tf.cast(high_energy_value > 0, tf.float32))
+        low_energy_accuracy = tf.reduce_mean(tf.cast(tf.less_equal(low_energy_value, 0), tf.float32))
+        high_energy_accuracy = tf.reduce_mean(tf.cast(tf.greater(high_energy_value, 0), tf.float32))
         accuracy = (low_energy_accuracy + high_energy_accuracy) * 0.5
         return loss, accuracy
 

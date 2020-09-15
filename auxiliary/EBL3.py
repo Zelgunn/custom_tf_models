@@ -3,10 +3,10 @@ from tensorflow.python.keras import Model
 from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from typing import Dict, Tuple
 
-from custom_tf_models import CustomModel, AE
+from custom_tf_models import AE
 
 
-class EBL3(CustomModel):
+class EBL3(Model):
     def __init__(self,
                  audio_autoencoder: AE,
                  video_autoencoder: AE,
@@ -23,18 +23,24 @@ class EBL3(CustomModel):
         self.optimizer = optimizer
         self.energy_margin = energy_margin
 
+        self._energy_margin = tf.constant(energy_margin, dtype=tf.float32, name="energy_margin")
+
     @tf.function
-    def train_step(self, inputs, *args, **kwargs) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+    def train_step(self, inputs: Tuple[tf.Tensor, tf.Tensor]) -> Dict[str, tf.Tensor]:
         with tf.GradientTape() as tape:
-            losses = self.compute_loss(inputs)
-            loss = losses[0]
+            metrics = self.compute_loss(inputs)
+            loss = metrics["loss"]
 
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-        return losses
+        return metrics
 
     @tf.function
-    def compute_loss(self, inputs, *args, **kwargs) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+    def test_step(self, inputs: Tuple[tf.Tensor, tf.Tensor]) -> Dict[str, tf.Tensor]:
+        return self.compute_loss(inputs)
+
+    @tf.function
+    def compute_loss(self, inputs: Tuple[tf.Tensor, tf.Tensor]) -> Dict[str, tf.Tensor]:
         audio, video = inputs
 
         right_audio = audio
@@ -42,14 +48,20 @@ class EBL3(CustomModel):
 
         low_energy = self.compute_energy((right_audio, video))
         high_energy = self.compute_energy((wrong_audio, video))
-        high_energy = tf.nn.relu(self.energy_margin - high_energy)
+        high_energy = tf.nn.relu(self._energy_margin - high_energy)
 
         weight_decay = self.weights_decay_loss(l1=1e-7)
 
         loss = low_energy + high_energy + weight_decay
-        return loss, low_energy, high_energy, weight_decay
+        return {
+            "loss": loss,
+            "low_energy": low_energy,
+            "high_energy": high_energy,
+            "weight_decay": weight_decay,
+        }
 
-    def compute_energy(self, inputs):
+    @tf.function
+    def compute_energy(self, inputs: Tuple[tf.Tensor, tf.Tensor]) -> tf.Tensor:
         outputs = self.autoencode(inputs)
 
         audio_inputs, video_inputs = inputs
@@ -60,7 +72,8 @@ class EBL3(CustomModel):
 
         return audio_energy + video_energy
 
-    def autoencode(self, inputs):
+    @tf.function
+    def autoencode(self, inputs) -> Tuple[tf.Tensor, tf.Tensor]:
         audio, video = inputs
 
         audio_latent_code = self.audio_autoencoder.encode(audio)
@@ -76,30 +89,12 @@ class EBL3(CustomModel):
         return audio, video
 
     @property
-    def metrics_names(self):
-        return ["loss", "low_energy", "high_energy", "weight_decay"]
-
-    @property
-    def models_ids(self) -> Dict[Model, str]:
-        return {
-            self.audio_autoencoder: "audio_autoencoder",
-            self.video_autoencoder: "video_autoencoder",
-            self.fusion_autoencoder: "fusion_autoencoder",
-        }
-
-    @property
     def trainable_variables(self):
         return (
                 self.audio_autoencoder.trainable_variables +
                 self.video_autoencoder.trainable_variables +
                 self.fusion_autoencoder.trainable_variables
         )
-
-    @property
-    def optimizers_ids(self) -> Dict[OptimizerV2, str]:
-        return {
-            self.optimizer: "optimizer",
-        }
 
     def get_config(self):
         return {

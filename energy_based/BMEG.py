@@ -1,10 +1,8 @@
 # EBGAN : Bimodal Energy-based Generative Adversarial Network
 import tensorflow as tf
 from tensorflow.python.keras import Model
-from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
-from typing import Dict, Union, List
+from typing import Dict, Union, List, Tuple
 
-from custom_tf_models import CustomModel
 from utils import gradient_difference_loss
 from misc_utils.math_utils import reduce_mean_from
 
@@ -28,14 +26,6 @@ class ModalityModels(Model):
         noise_size = self.generator.input_shape[-1] - base_code_size
         return noise_size
 
-    @property
-    def models_ids(self) -> Dict[Model, str]:
-        return {
-            self.encoder: "encoder_{}".format(self.name),
-            self.generator: "generator_{}".format(self.name),
-            self.decoder: "decoder_{}".format(self.name),
-        }
-
     def get_config(self):
         config = {
             "encoder": self.encoder.get_config(),
@@ -45,7 +35,7 @@ class ModalityModels(Model):
         return config
 
 
-class BMEG(CustomModel):
+class BMEG(Model):
     def __init__(self,
                  models_1: ModalityModels,
                  models_2: ModalityModels,
@@ -73,7 +63,7 @@ class BMEG(CustomModel):
 
     # region Training
     @tf.function
-    def train_step(self, inputs, *args, **kwargs):
+    def train_step(self, inputs) -> Dict[str, tf.Tensor]:
         metrics, gradients = self.compute_gradients(inputs)
 
         encoders_gradients, discriminator_gradients, generators_gradients = gradients
@@ -85,7 +75,11 @@ class BMEG(CustomModel):
         return metrics
 
     @tf.function
-    def compute_gradients(self, inputs):
+    def test_step(self, inputs) -> Dict[str, tf.Tensor]:
+        return self.compute_loss(inputs)
+
+    @tf.function
+    def compute_gradients(self, inputs) -> Tuple[Dict[str, tf.Tensor], Tuple[tf.Tensor, tf.Tensor, tf.Tensor]]:
         with tf.GradientTape(watch_accessed_variables=False) as encoders_tape, \
                 tf.GradientTape(watch_accessed_variables=False) as discriminator_tape, \
                 tf.GradientTape(watch_accessed_variables=False) as generators_tape:
@@ -94,12 +88,9 @@ class BMEG(CustomModel):
             generators_tape.watch(self.generators_trainable_variables)
 
             metrics = self.compute_loss(inputs)
-            losses = metrics[1:4]
-            (
-                encoders_loss,
-                discriminator_loss,
-                generators_loss
-            ) = losses
+            encoders_loss = metrics["encoders_loss"]
+            discriminator_loss = metrics["discriminator_loss"]
+            generators_loss = metrics["generators_loss"]
 
             # weights_decay = self.weights_decay_loss(l2=1e-5)
             # encoders_loss += weights_decay
@@ -115,8 +106,7 @@ class BMEG(CustomModel):
         return metrics, gradients
 
     @tf.function
-    def compute_loss(self, inputs, *args, **kwargs):
-        # inputs, _, _ = self.standardize_inputs(inputs)
+    def compute_loss(self, inputs) -> Dict[str, tf.Tensor]:
         input_1, input_2 = inputs
 
         latent_codes = self.encode(inputs)
@@ -166,13 +156,15 @@ class BMEG(CustomModel):
 
         total_loss = encoders_loss + discriminator_loss + generators_loss
 
-        return (total_loss,
-                encoders_loss,
-                discriminator_loss,
-                generators_loss,
-                convergence_measure,
-                pull_away_factor,
-                adversarial_emphasis)
+        return {
+            "loss": total_loss,
+            "encoders_loss": encoders_loss,
+            "discriminator_loss": discriminator_loss,
+            "generators_loss": generators_loss,
+            "convergence_measure": convergence_measure,
+            "pull_away_factor": pull_away_factor,
+            "adversarial_emphasis": adversarial_emphasis,
+        }
 
     # endregion
 
@@ -319,33 +311,6 @@ class BMEG(CustomModel):
     @property
     def noise_size(self) -> int:
         return self.models_1.generator.input_shape[1][-1]
-
-    @property
-    def models_ids(self) -> Dict[Model, str]:
-        return {
-            **self.models_1.models_ids,
-            **self.models_2.models_ids,
-            self.fusion_autoencoder: "fusion_autoencoder",
-        }
-
-    @property
-    def optimizers_ids(self) -> Dict[OptimizerV2, str]:
-        return {
-            self.autoencoder_optimizer: "autoencoder_optimizer",
-            self.generators_optimizer: "generators_optimizer",
-        }
-
-    @property
-    def metrics_names(self):
-        return [
-            "total_loss",
-            "encoders_loss",
-            "discriminator_loss",
-            "generators_loss",
-            "convergence",
-            "pull_away",
-            "adversarial_emphasis"
-        ]
 
     def get_config(self):
         config = {

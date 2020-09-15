@@ -1,7 +1,4 @@
 # noinspection PyUnresolvedReferences
-from custom_tf_models.CustomModel import CustomModel
-
-# noinspection PyUnresolvedReferences
 from custom_tf_models.basic.AE import AE
 
 # noinspection PyUnresolvedReferences

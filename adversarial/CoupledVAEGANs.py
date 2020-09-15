@@ -3,11 +3,11 @@ from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from tensorflow.python.keras import Model
 from typing import Dict, Tuple
 
-from custom_tf_models import CustomModel, AE
+from custom_tf_models import AE
 from custom_tf_models.adversarial import gradient_penalty, GANLoss, GANLossMode
 
 
-class CoupledVAEGANs(CustomModel):
+class CoupledVAEGANs(Model):
     def __init__(self,
                  generator_1: AE,
                  generator_2: AE,
@@ -51,36 +51,41 @@ class CoupledVAEGANs(CustomModel):
         self.seed = seed
 
     @tf.function
-    def train_step(self, inputs, *args, **kwargs):
+    def train_step(self, inputs) -> Dict[str, tf.Tensor]:
         x_1, x_2 = inputs
 
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(self.generators_trainable_variables)
-            generators_losses = self.compute_generators_losses(x_1, x_2)
-            generators_loss = tf.reduce_sum(generators_losses)
+            generators_metrics = self.compute_generators_losses(x_1, x_2)
+            generators_loss = tf.reduce_sum(tuple(generators_metrics.values()))
 
         gradients = tape.gradient(generators_loss, self.generators_trainable_variables)
         self.generators_optimizer.apply_gradients(zip(gradients, self.generators_trainable_variables))
 
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(self.discriminators_trainable_variables)
-            discriminators_losses = self.compute_discriminators_losses(x_1, x_2)
-            discriminators_loss = tf.reduce_sum(discriminators_losses)
+            discriminators_metrics = self.compute_discriminators_losses(x_1, x_2)
+            discriminators_loss = tf.reduce_sum(tuple(discriminators_metrics.values()))
 
         gradients = tape.gradient(discriminators_loss, self.discriminators_trainable_variables)
         self.discriminators_optimizer.apply_gradients(zip(gradients, self.discriminators_trainable_variables))
 
-        return (*generators_losses, *discriminators_losses)
+        return {**generators_metrics, **discriminators_metrics}
 
     @tf.function
-    def compute_loss(self, inputs, *args, **kwargs):
+    def test_step(self, inputs) -> Dict[str, tf.Tensor]:
+        return self.compute_loss(inputs)
+
+    # region Loss
+    @tf.function
+    def compute_loss(self, inputs) -> Dict[str, tf.Tensor]:
         x_1, x_2 = inputs
 
-        generators_losses = self.compute_generators_losses(x_1, x_2)
-        discriminators_losses = self.compute_discriminators_losses(x_1, x_2)
-        return (*generators_losses, *discriminators_losses)
+        generators_metrics = self.compute_generators_losses(x_1, x_2)
+        discriminators_metrics = self.compute_discriminators_losses(x_1, x_2)
+        return {**generators_metrics, **discriminators_metrics}
 
-    def compute_generators_losses(self, x_1, x_2):
+    def compute_generators_losses(self, x_1, x_2) -> Dict[str, tf.Tensor]:
         # region Forward
         z_1 = self.encode_1(x_1)
         z_2 = self.encode_2(x_2)
@@ -139,9 +144,13 @@ class CoupledVAEGANs(CustomModel):
         adversarial_loss = (x_1_2_adversarial_loss + x_2_1_adversarial_loss) * self.adversarial_loss_weight
         # endregion
 
-        return reconstruction_loss, divergence_loss, adversarial_loss
+        return {
+            "reconstruction_loss": reconstruction_loss,
+            "divergence_loss": divergence_loss,
+            "adversarial_loss": adversarial_loss,
+        }
 
-    def compute_discriminators_losses(self, x_1, x_2):
+    def compute_discriminators_losses(self, x_1, x_2) -> Dict[str, tf.Tensor]:
         # region Forward
         z_1 = self.encode_1(x_1)
         z_2 = self.encode_2(x_2)
@@ -176,7 +185,11 @@ class CoupledVAEGANs(CustomModel):
             gradient_penalty_loss = tf.constant(0.0, name="NoGradientPenalty")
         # endregion
 
-        return discriminators_loss, gradient_penalty_loss
+        return {
+            "discriminators_loss": discriminators_loss,
+            "gradient_penalty_loss": gradient_penalty_loss,
+        }
+    # endregion
 
     # region Loss helpers
     @staticmethod
@@ -265,34 +278,7 @@ class CoupledVAEGANs(CustomModel):
 
     # endregion
 
-    # region IDs / Config
-    @property
-    def models_ids(self) -> Dict[Model, str]:
-        return {
-            self.generator_1: "generator_{}".format(self.domain_1_name),
-            self.generator_2: "generator_{}".format(self.domain_2_name),
-
-            self.discriminator_1: "discriminator_{}".format(self.domain_1_name),
-            self.discriminator_2: "discriminator_{}".format(self.domain_2_name),
-        }
-
-    @property
-    def optimizers_ids(self) -> Dict[OptimizerV2, str]:
-        return {
-            self.generators_optimizer: "generators_optimizer",
-            self.discriminators_optimizer: "discriminators_optimizer",
-        }
-
-    @property
-    def metrics_names(self):
-        return [
-            "reconstruction",
-            "encoder_divergence",
-            "generator_adversarial",
-            "discriminator_adversarial",
-            "gradient_penalty"
-        ]
-
+    # region Config
     def get_config(self):
         return {
             "generator_1": self.generator_1.get_config(),

@@ -1,14 +1,13 @@
 import tensorflow as tf
 from tensorflow.python.keras import Model
 from tensorflow.python.keras.layers import Lambda, TimeDistributed
-from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from typing import Optional, Dict, Union, List
 
-from custom_tf_models import CustomModel, AE
+from custom_tf_models import AE
 from transformers import Transformer
 
 
-class CNNTransformer(CustomModel):
+class CNNTransformer(Model):
     def __init__(self,
                  input_length: int,
                  output_length: int,
@@ -57,6 +56,7 @@ class CNNTransformer(CustomModel):
         self.transformer_evaluator = transformer.make_evaluator(output_length)
         self._evaluator: Optional[tf.keras.models.Sequential] = None
 
+    @tf.function
     def call(self, inputs, training=None, mask=None):
         encoder_embedding_input = self.split_inputs(inputs)
         decoder_embedding_input = self.split_outputs(inputs)
@@ -75,23 +75,13 @@ class CNNTransformer(CustomModel):
 
         return decoded
 
-    def evaluate_sequence(self, inputs):
-        inputs = self.split_inputs(inputs)
-        encoder_latent_code = self.step_encoder(inputs)
-        encoder_latent_code = self.parts_to_batch(encoder_latent_code)
-
-        transformed = self.transformer_evaluator(encoder_latent_code)
-
-        decoded = self.batch_to_parts(transformed)
-        decoded = self.step_decoder(decoded)
-        decoded = self.merge_outputs(decoded)
-
-        return decoded
-
     @tf.function
-    def train_step(self, inputs, *args, **kwargs):
+    def train_step(self, inputs) -> Dict[str, tf.Tensor]:
         with tf.GradientTape() as tape:
-            loss = self.compute_loss(inputs)
+            metrics = self.compute_loss(inputs)
+            loss = metrics["loss"]
+            if self.transformer.add_copy_regularization:
+                loss += metrics["copy_regularization"]
 
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
@@ -99,18 +89,24 @@ class CNNTransformer(CustomModel):
         if self.transformer.add_copy_regularization and self.train_only_embeddings:
             loss, copy_regularization = loss
             copy_regularization /= self.transformer.copy_regularization_factor
-            loss = (loss, copy_regularization)
+            metrics["copy_regularization"] = copy_regularization
 
-        return loss
+        return metrics
 
-    def compute_loss(self, inputs, *args, **kwargs):
+    @tf.function
+    def test_step(self, inputs) -> Dict[str, tf.Tensor]:
+        return self.compute_loss(inputs)
+
+    # region Loss
+    @tf.function
+    def compute_loss(self, inputs) -> Dict[str, tf.Tensor]:
         if self.train_only_embeddings:
             return self.compute_embeddings_loss(inputs)
         else:
             return self.compute_reconstruction_loss(inputs)
 
     @tf.function
-    def compute_embeddings_loss(self, inputs):
+    def compute_embeddings_loss(self, inputs: tf.Tensor) -> Dict[str, tf.Tensor]:
         encoder_embedding_input = self.split_inputs(inputs)
         decoder_embedding_input = self.split_outputs(inputs)
 
@@ -124,7 +120,7 @@ class CNNTransformer(CustomModel):
         return transformer_loss
 
     @tf.function
-    def compute_reconstruction_loss(self, inputs):
+    def compute_reconstruction_loss(self, inputs: tf.Tensor) -> Dict[str, tf.Tensor]:
         encoder_embedding_input = self.split_inputs(inputs)
         decoder_embedding_input = self.split_outputs(inputs)
 
@@ -140,7 +136,9 @@ class CNNTransformer(CustomModel):
         decoded = self.step_decoder(decoded)
 
         reconstruction_loss = tf.reduce_mean(tf.square(decoder_embedding_input - decoded))
-        return reconstruction_loss
+        return {"loss": reconstruction_loss}
+
+    # endregion
 
     # @property
     # def anomaly_metrics(self) -> List:
@@ -157,38 +155,9 @@ class CNNTransformer(CustomModel):
     #
     #     return [embeddings_loss, combined_loss]
 
-    @property
-    def metrics_names(self):
-        if self.train_only_embeddings:
-            return self.transformer.metrics_names
-        else:
-            return ["reconstruction"]
-
-    def get_config(self):
-        config = {
-            "input_length": self.input_length,
-            "output_length": self.output_length,
-            "autoencoder": self.autoencoder.get_config(),
-            "transformer": self.transformer.get_config(),
-            "learning_rate": self.learning_rate,
-        }
-        return config
-
-    @property
-    def models_ids(self) -> Dict[Model, str]:
-        autoencoder_ids = self.autoencoder.models_ids
-        return {
-            **autoencoder_ids,
-            self.transformer: "transformer"
-        }
-
-    @property
-    def optimizers_ids(self) -> Dict[OptimizerV2, str]:
-        return {
-            self.optimizer: "optimizer",
-        }
-
-    def split_steps(self, tensor, is_inputs: bool):
+    # region Split / Merge steps
+    @tf.function
+    def split_steps(self, tensor: tf.Tensor, is_inputs: bool) -> tf.Tensor:
         step_count = self.input_length + self.output_length
 
         tensor_shape = tf.shape(tensor)
@@ -204,11 +173,28 @@ class CNNTransformer(CustomModel):
         return tensor
 
     @staticmethod
-    def merge_steps(tensor):
+    def merge_steps(tensor: tf.Tensor) -> tf.Tensor:
         tensor_shape = tf.shape(tensor)
         batch_size, step_count, step_size, *dimensions = tf.unstack(tensor_shape)
         tensor = tf.reshape(tensor, [batch_size, step_count * step_size, *dimensions])
         return tensor
+
+    # endregion
+
+    # region Evaluate sequence
+    @tf.function
+    def evaluate_sequence(self, inputs: tf.Tensor) -> tf.Tensor:
+        inputs = self.split_inputs(inputs)
+        encoder_latent_code = self.step_encoder(inputs)
+        encoder_latent_code = self.parts_to_batch(encoder_latent_code)
+
+        transformed = self.transformer_evaluator(encoder_latent_code)
+
+        decoded = self.batch_to_parts(transformed)
+        decoded = self.step_decoder(decoded)
+        decoded = self.merge_outputs(decoded)
+
+        return decoded
 
     @property
     def evaluator(self) -> tf.keras.models.Sequential:
@@ -222,6 +208,18 @@ class CNNTransformer(CustomModel):
                 self._layers.remove(self._evaluator)
 
         return self._evaluator
+
+    # endregion
+
+    def get_config(self):
+        config = {
+            "input_length": self.input_length,
+            "output_length": self.output_length,
+            "autoencoder": self.autoencoder.get_config(),
+            "transformer": self.transformer.get_config(),
+            "learning_rate": self.learning_rate,
+        }
+        return config
 
 
 def parts_to_batch(tensor):

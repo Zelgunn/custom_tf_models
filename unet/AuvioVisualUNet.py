@@ -1,13 +1,11 @@
 import tensorflow as tf
 from tensorflow.python.keras import Model
-from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from typing import Dict
 
-from custom_tf_models import CustomModel
 from unet import UNet
 
 
-class AudioVideoUNet(CustomModel):
+class AudioVideoUNet(Model):
     def __init__(self,
                  image_unet: UNet,
                  audio_unet: UNet,
@@ -54,21 +52,16 @@ class AudioVideoUNet(CustomModel):
 
         return audio_decoded, video_decoded
 
-    def train_step(self, inputs, *args, **kwargs):
+    @tf.function
+    def train_step(self, inputs) -> Dict[str, tf.Tensor]:
         pass
 
-    def compute_loss(self, inputs, *args, **kwargs):
+    @tf.function
+    def test_step(self, inputs) -> Dict[str, tf.Tensor]:
+        return self.compute_loss(inputs)
+
+    def compute_loss(self, inputs) -> Dict[str, tf.Tensor]:
         pass
-
-    @property
-    def models_ids(self) -> Dict[Model, str]:
-        return {self.image_unet: "ImageUNet", self.audio_unet: "AudioUNet", self.time_unet: "FusionUnet"}
-
-    @property
-    def optimizers_ids(self) -> Dict[OptimizerV2, str]:
-        return {
-            self.optimizer: "optimizer",
-        }
 
     def get_config(self):
         return {

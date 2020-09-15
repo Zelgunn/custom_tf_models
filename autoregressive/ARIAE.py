@@ -1,14 +1,13 @@
 # ARIAE : Autoregressive Interpolating Autoencoder
 import tensorflow as tf
 from tensorflow.python.keras import Model
-from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from typing import Dict
 
 from transformers import Transformer
-from custom_tf_models import CustomModel, IAE
+from custom_tf_models import IAE
 
 
-class ARIAE(CustomModel):
+class ARIAE(Model):
     def __init__(self,
                  iae: IAE,
                  transformer: Transformer,
@@ -21,32 +20,26 @@ class ARIAE(CustomModel):
 
         self.iae.trainable = False
 
-    def train_step(self, inputs, *args, **kwargs):
+    @tf.function
+    def train_step(self, inputs) -> Dict[str, tf.Tensor]:
         with tf.GradientTape() as tape:
-            loss = self.compute_loss(inputs)
+            metrics = self.compute_loss(inputs)
+            loss = metrics["loss"]
 
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
-        return loss
+        return metrics
 
-    def compute_loss(self, inputs, *args, **kwargs) -> tf.Tensor:
+    @tf.function
+    def test_step(self, inputs):
+        return self.compute_loss(inputs)
+
+    @tf.function
+    def compute_loss(self, inputs) -> Dict[str, tf.Tensor]:
         pass
         # inputs, inputs_shape, split_shape = self.iae.split_inputs(inputs, merge_batch_and_steps=True)
         # encoded = self.iae.encode(inputs)
-
-    @property
-    def models_ids(self) -> Dict[Model, str]:
-        return {
-            **self.iae.models_ids,
-            self.transformer: "transformer"
-        }
-
-    @property
-    def optimizers_ids(self) -> Dict[OptimizerV2, str]:
-        return {
-            self.optimizer: "optimizer",
-        }
 
     def get_config(self):
         pass

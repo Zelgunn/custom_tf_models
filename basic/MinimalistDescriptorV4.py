@@ -7,7 +7,7 @@ from typing import Dict, Any
 
 from custom_tf_models import AE
 from CustomKerasLayers import TileLayer
-from misc_utils.math_utils import binarize, reduce_mean_from, lerp
+from misc_utils.math_utils import binarize, reduce_mean_from
 
 
 class MinimalistDescriptorV4(AE):
