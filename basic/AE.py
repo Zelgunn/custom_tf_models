@@ -23,7 +23,7 @@ class AE(Model):
 
         self.optimizer = None
         if self.learning_rate is not None:
-            self.set_optimizer(tf.keras.optimizers.Adam(learning_rate=learning_rate))
+            self.optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
     @tf.function
     def call(self, inputs, training=None, mask=None):
@@ -42,9 +42,9 @@ class AE(Model):
         return self.decode(self.encode(inputs))
 
     @tf.function
-    def train_step(self, data) -> Dict[str, tf.Tensor]:
+    def train_step(self, inputs) -> Dict[str, tf.Tensor]:
         with tf.GradientTape() as tape:
-            metrics = self.compute_loss(data)
+            metrics = self.compute_loss(inputs)
             loss = metrics["loss"]
 
         gradients = tape.gradient(loss, self.trainable_variables)
@@ -53,8 +53,8 @@ class AE(Model):
         return metrics
 
     @tf.function
-    def test_step(self, data):
-        return self.compute_loss(data)
+    def test_step(self, inputs):
+        return self.compute_loss(inputs)
 
     @tf.function
     def compute_loss(self,
@@ -82,14 +82,3 @@ class AE(Model):
             "learning_rate": self.learning_rate
         }
         return config
-
-    @property
-    def optimizers_ids(self) -> Dict[OptimizerV2, str]:
-        return {
-            self.optimizer: "optimizer"
-        }
-
-    def set_optimizer(self, optimizer):
-        self.optimizer = optimizer
-        self.encoder.optimizer = optimizer
-        self.decoder.optimizer = optimizer

@@ -20,8 +20,9 @@ class LED(AE):
                  learning_rate: LearningRateType,
                  features_per_block: int,
                  merge_dims_with_features=False,
+                 descriptors_activation="tanh",
                  binarization_temperature=50.0,
-                 add_binarization_noise_to_mask=False,
+                 add_binarization_noise_to_mask=True,
                  description_energy_loss_lambda=1e-2,
                  seed=None,
                  **kwargs
@@ -32,14 +33,13 @@ class LED(AE):
                                   **kwargs)
         self.features_per_block = features_per_block
         self.merge_dims_with_features = merge_dims_with_features
-        self.description_energy_model = self.make_description_model(latent_code_shape=encoder.output_shape[1:],
-                                                                    features_per_block=features_per_block,
-                                                                    merge_dims_with_features=merge_dims_with_features,
-                                                                    seed=seed)
+        self.descriptors_activation = descriptors_activation
         self.binarization_temperature = binarization_temperature
         self.add_binarization_noise_to_mask = add_binarization_noise_to_mask
         self.description_energy_loss_lambda = description_energy_loss_lambda
         self.seed = seed
+
+        self.description_energy_model = self._make_description_model()
 
         self._binarization_threshold = tf.constant(0.0, dtype=tf.float32, name="bin_threshold")
         self._binarization_temperature = tf.constant(binarization_temperature, dtype=tf.float32, name="bin_temperature")
@@ -48,6 +48,66 @@ class LED(AE):
 
         self.noise_factor_distribution = "normal"
         self.noise_type = "sparse"
+
+    # region Make description model
+    def _make_description_model(self):
+        return self.make_description_model(latent_code_shape=self.encoder.output_shape[1:],
+                                           features_per_block=self.features_per_block,
+                                           merge_dims_with_features=self.merge_dims_with_features,
+                                           descriptors_activation=self.descriptors_activation,
+                                           seed=self.seed)
+
+    @staticmethod
+    def make_description_model(latent_code_shape,
+                               features_per_block: int,
+                               merge_dims_with_features: bool,
+                               descriptors_activation: str,
+                               name="DescriptionEnergyModel",
+                               seed=None):
+        features_dims = latent_code_shape if merge_dims_with_features else latent_code_shape[-1:]
+        block_count = np.prod(features_dims) // features_per_block
+
+        if descriptors_activation not in LED.descriptor_activations_map():
+            valid_activations = tuple(LED.descriptor_activations_map().keys())
+            raise ValueError("`output_activation` must be in ({}). Got {}."
+                             .format(valid_activations, descriptors_activation))
+
+        shared_params = {
+            "kernel_initializer": VarianceScaling(seed=seed, scale=1.0),
+            "kernel_size": 13,  # Current field size : (13 - 1) * 5 + 1 = 61
+            "padding": "causal"
+        }
+        conv_layers = [
+            Conv1D(filters=32, activation="relu", **shared_params),
+            Conv1D(filters=16, activation="relu", **shared_params),
+            Conv1D(filters=8, activation="relu", **shared_params),
+            Conv1D(filters=4, activation="relu", **shared_params),
+            Conv1D(filters=1, activation=descriptors_activation, **shared_params)
+        ]
+
+        if merge_dims_with_features:
+            target_input_shape = (block_count, features_per_block)
+            tiling_multiples = [1, features_per_block]
+        else:
+            conv_layers = [TimeDistributed(layer) for layer in conv_layers]
+            dimensions_size = np.prod(latent_code_shape[:-1])
+            target_input_shape = (dimensions_size, block_count, features_per_block)
+            tiling_multiples = [1, 1, features_per_block]
+
+        description_energy_model = Sequential(layers=[
+            Reshape(target_shape=target_input_shape, input_shape=latent_code_shape),
+            *conv_layers,
+            TileLayer(multiples=tiling_multiples),
+            Reshape(target_shape=latent_code_shape)
+        ], name=name)
+
+        return description_energy_model
+
+    @staticmethod
+    def descriptor_activations_map() -> Dict[str, float]:
+        return {"tanh": 0.0, "sigmoid": 0.5, "linear": 0.0}
+
+    # endregion
 
     # region Forward
     @tf.function
@@ -79,9 +139,7 @@ class LED(AE):
         return tf.reduce_mean(description_energy)
 
     @tf.function
-    def compute_loss(self,
-                     inputs
-                     ) -> Dict[str, tf.Tensor]:
+    def compute_loss(self, inputs) -> Dict[str, tf.Tensor]:
         batch_size = tf.shape(inputs)[0]
         noise_factor = tf.random.uniform([batch_size], maxval=1.0, seed=self.seed)
         noise_factor = expand_dims_to_rank(noise_factor, inputs)
@@ -111,6 +169,7 @@ class LED(AE):
 
     # endregion
 
+    # region Config
     def get_config(self) -> Dict[str, Any]:
         base_config = super(LED, self).get_config()
         return {
@@ -123,45 +182,7 @@ class LED(AE):
             "seed": self.seed,
         }
 
-    @staticmethod
-    def make_description_model(latent_code_shape,
-                               features_per_block: int,
-                               merge_dims_with_features: bool,
-                               name="DescriptionEnergyModel",
-                               seed=None):
-        features_dims = latent_code_shape if merge_dims_with_features else latent_code_shape[-1:]
-        block_count = np.prod(features_dims) // features_per_block
-
-        shared_params = {
-            "kernel_initializer": VarianceScaling(seed=seed, scale=1.0),
-            "kernel_size": 13,  # Current field size : 66
-            "padding": "causal"
-        }
-        conv_layers = [
-            Conv1D(filters=32, activation="relu", **shared_params),
-            Conv1D(filters=16, activation="relu", **shared_params),
-            Conv1D(filters=8, activation="relu", **shared_params),
-            Conv1D(filters=4, activation="relu", **shared_params),
-            Conv1D(filters=1, activation="tanh", **shared_params)
-        ]
-
-        if merge_dims_with_features:
-            target_input_shape = (block_count, features_per_block)
-            tiling_multiples = [1, features_per_block]
-        else:
-            conv_layers = [TimeDistributed(layer) for layer in conv_layers]
-            dimensions_size = np.prod(latent_code_shape[:-1])
-            target_input_shape = (dimensions_size, block_count, features_per_block)
-            tiling_multiples = [1, 1, features_per_block]
-
-        description_energy_model = Sequential(layers=[
-            Reshape(target_shape=target_input_shape, input_shape=latent_code_shape),
-            *conv_layers,
-            TileLayer(multiples=tiling_multiples),
-            Reshape(target_shape=latent_code_shape)
-        ], name=name)
-
-        return description_energy_model
+    # endregion
 
     # region Anomaly detection
     @tf.function

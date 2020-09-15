@@ -47,6 +47,7 @@ class GANLoss(object):
             return -predicted
 
 
+@tf.function
 def gradient_penalty(real: tf.Tensor, fake: tf.Tensor, discriminator: Model, seed=None) -> tf.Tensor:
     fake = tf.stop_gradient(fake)
     batch_size = tf.shape(real)[0]
