@@ -8,6 +8,7 @@ from typing import Dict, Any
 from custom_tf_models import AE
 from CustomKerasLayers import TileLayer
 from misc_utils.math_utils import binarize, reduce_mean_from
+from misc_utils.general import expand_dims_to_rank
 
 
 class MinimalistDescriptorV4(AE):
@@ -79,11 +80,13 @@ class MinimalistDescriptorV4(AE):
     def compute_loss(self,
                      inputs
                      ) -> Dict[str, tf.Tensor]:
-        noise_factor = tf.random.uniform([], maxval=0.1)
-        noise = tf.random.normal(tf.shape(inputs), stddev=1.0, seed=self.seed) * noise_factor
-        inputs += noise
+        batch_size = tf.shape(inputs)[0]
+        noise_factor = tf.random.uniform([batch_size], maxval=1.0, seed=self.seed)
+        noise_factor = expand_dims_to_rank(noise_factor, inputs)
+        noise = tf.random.normal(tf.shape(inputs), stddev=0.1, seed=self.seed)
+        noisy_inputs = inputs + noise * noise_factor
 
-        encoded = self.encoder(inputs)
+        encoded = self.encoder(noisy_inputs)
         description_energy = self.description_energy_model(encoded)
         description_mask = self.get_description_mask(description_energy)
         encoded *= description_mask
