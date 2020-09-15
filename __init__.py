@@ -20,6 +20,6 @@ from custom_tf_models.basic.TDAE import TDAE
 from custom_tf_models.basic.BinAE import BinAE
 
 # noinspection PyUnresolvedReferences
-from description_length.LED import LED
+from custom_tf_models.description_length.LED import LED
 # noinspection PyUnresolvedReferences
-from description_length.ALED import ALED
+from custom_tf_models.description_length.ALED import ALED
