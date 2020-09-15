@@ -301,6 +301,10 @@ class MinimalistDescriptor(AE):
         result = tf.cast(length, tf.float32) + last
         return result
 
+    @property
+    def additional_test_metrics(self):
+        return [self.compute_description_length, self.compute_description_length_2]
+
     # endregion
 
     # region Config
@@ -328,10 +332,6 @@ class MinimalistDescriptor(AE):
             self.stop_encoder: "stop_encoder",
         }
         return models_ids
-
-    @property
-    def additional_test_metrics(self):
-        return [self.compute_description_length, self.compute_description_length_2]
 
     # endregion
 
