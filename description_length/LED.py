@@ -10,7 +10,8 @@ from CustomKerasLayers import TileLayer
 from misc_utils.math_utils import binarize, reduce_mean_from
 
 
-class MinimalistDescriptorV4(AE):
+# LED : Low Energy Descriptors
+class LED(AE):
     def __init__(self,
                  encoder: Model,
                  decoder: Model,
