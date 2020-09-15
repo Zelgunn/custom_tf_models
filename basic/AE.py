@@ -5,6 +5,7 @@ from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from tensorflow.python.keras.callbacks import CallbackList
 from typing import Dict
 
+from custom_tf_models.utils import LearningRateType
 from misc_utils.train_utils import CustomLearningRateSchedule
 
 
@@ -12,7 +13,7 @@ class AE(Model):
     def __init__(self,
                  encoder: Model,
                  decoder: Model,
-                 learning_rate=None,
+                 learning_rate: LearningRateType = None,
                  **kwargs):
         super(AE, self).__init__(**kwargs)
 

@@ -4,14 +4,15 @@ import tensorflow_probability as tfp
 from tensorflow.python.keras import Model
 from typing import Dict
 
-from custom_tf_models.basic import AE
+from custom_tf_models.basic.AE import AE
+from custom_tf_models.utils import LearningRateType
 
 
 class VAE(AE):
     def __init__(self,
                  encoder: Model,
                  decoder: Model,
-                 learning_rate=None,
+                 learning_rate: LearningRateType = None,
                  kl_divergence_loss_factor=1e-2,
                  seed=None,
                  **kwargs):

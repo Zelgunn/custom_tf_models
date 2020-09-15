@@ -3,7 +3,7 @@ from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from tensorflow.python.keras import Model
 from typing import Dict, Tuple
 
-from custom_tf_models import AE
+from custom_tf_models.basic.AE import AE
 from custom_tf_models.adversarial import gradient_penalty, GANLoss, GANLossMode
 
 
@@ -189,6 +189,7 @@ class CoupledVAEGANs(Model):
             "discriminators_loss": discriminators_loss,
             "gradient_penalty_loss": gradient_penalty_loss,
         }
+
     # endregion
 
     # region Loss helpers

@@ -6,9 +6,10 @@ from tensorflow.python.keras.layers import UpSampling1D, UpSampling2D, UpSamplin
 from tensorflow.python.keras.layers.pooling import Pooling1D, Pooling2D, Pooling3D
 from typing import List, Union
 
+from custom_tf_models.basic.AE import AE
+from custom_tf_models.utils import LearningRateType
 from CustomKerasLayers import Conv1DTranspose
 from CustomKerasLayers import ResBlockND, ResBlockNDTranspose
-from custom_tf_models import AE
 
 
 class UNet(AE):
@@ -16,7 +17,7 @@ class UNet(AE):
                  encoder_layers: List[Layer],
                  output_activation=None,
                  connection_map: List[bool] = None,
-                 learning_rate=1e-3,
+                 learning_rate: LearningRateType = 1e-3,
                  name: str = None,
                  **kwargs):
         self._init_set_name(name)

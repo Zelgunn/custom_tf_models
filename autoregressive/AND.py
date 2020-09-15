@@ -2,8 +2,8 @@ import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import Dict
 
-from custom_tf_models import AE
-from custom_tf_models.utils import split_steps
+from custom_tf_models.basic.AE import AE
+from custom_tf_models.utils import LearningRateType, split_steps
 from CustomKerasLayers.models.ConvAM import compute_autoregression_loss
 
 
@@ -18,7 +18,7 @@ class AND(AE):
                  am: Model,
                  step_size: int,
                  do_autoregression_on_latent_code=True,
-                 learning_rate=1e-3,
+                 learning_rate: LearningRateType = 1e-3,
                  **kwargs):
         super(AND, self).__init__(encoder=encoder,
                                   decoder=decoder,

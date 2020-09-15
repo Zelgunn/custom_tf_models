@@ -3,7 +3,8 @@ from tensorflow.python.keras import Model
 from tensorflow.python.keras.layers import Lambda, TimeDistributed
 from typing import Optional, Dict, Union, List
 
-from custom_tf_models import AE
+from custom_tf_models.basic.AE import AE
+from custom_tf_models.utils import LearningRateType
 from transformers import Transformer
 
 
@@ -14,7 +15,7 @@ class CNNTransformer(Model):
                  autoencoder: AE,
                  transformer: Transformer,
                  autoencoder_input_shape: Union[tf.TensorShape, List[int]] = None,
-                 learning_rate=1e-3,
+                 learning_rate: LearningRateType = 1e-3,
                  train_only_embeddings=True,
                  **kwargs):
         super(CNNTransformer, self).__init__(**kwargs)

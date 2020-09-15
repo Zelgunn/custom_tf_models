@@ -4,8 +4,8 @@ from tensorflow.python.keras import Model
 from typing import Dict
 
 from misc_utils.math_utils import lerp
-from custom_tf_models.basic import AE
-from custom_tf_models.utils import split_steps
+from custom_tf_models.basic.AE import AE
+from custom_tf_models.utils import LearningRateType, split_steps
 from misc_utils.train_utils import CustomLearningRateSchedule
 
 
@@ -14,7 +14,7 @@ class IAE(AE):
                  encoder: Model,
                  decoder: Model,
                  step_size: int,
-                 learning_rate=1e-3,
+                 learning_rate: LearningRateType = 1e-3,
                  seed=None,
                  **kwargs):
         super(IAE, self).__init__(encoder=encoder,
@@ -197,7 +197,7 @@ class IAE(AE):
 # WIP
 class IAESchedule(CustomLearningRateSchedule):
     def __init__(self,
-                 learning_rate=1e-3,
+                 learning_rate: LearningRateType = 1e-3,
                  update_rate=0.01,
                  max_reduction_factor=32.0,
                  recover_rate=1.1,

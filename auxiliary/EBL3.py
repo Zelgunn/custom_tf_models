@@ -3,7 +3,7 @@ from tensorflow.python.keras import Model
 from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from typing import Dict, Tuple
 
-from custom_tf_models import AE
+from custom_tf_models.basic.AE import AE
 
 
 class EBL3(Model):

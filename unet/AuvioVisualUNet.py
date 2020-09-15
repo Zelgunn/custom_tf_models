@@ -2,7 +2,8 @@ import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import Dict
 
-from unet import UNet
+from custom_tf_models.unet.UNet import UNet
+from custom_tf_models.utils import LearningRateType
 
 
 class AudioVideoUNet(Model):
@@ -10,7 +11,7 @@ class AudioVideoUNet(Model):
                  image_unet: UNet,
                  audio_unet: UNet,
                  time_unet: UNet,
-                 learning_rate=1e-3,
+                 learning_rate: LearningRateType = 1e-3,
                  **kwargs
                  ):
         super(AudioVideoUNet, self).__init__(**kwargs)

@@ -5,7 +5,8 @@ from tensorflow.python.keras.initializers import VarianceScaling
 import numpy as np
 from typing import Dict, Any
 
-from custom_tf_models import AE
+from custom_tf_models.basic.AE import AE
+from custom_tf_models.utils import LearningRateType
 from CustomKerasLayers import TileLayer
 from misc_utils.math_utils import binarize, reduce_mean_from
 from misc_utils.general import expand_dims_to_rank
@@ -16,7 +17,7 @@ class LED(AE):
     def __init__(self,
                  encoder: Model,
                  decoder: Model,
-                 learning_rate,
+                 learning_rate: LearningRateType,
                  features_per_block: int,
                  merge_dims_with_features=False,
                  binarization_temperature=50.0,
@@ -25,10 +26,10 @@ class LED(AE):
                  seed=None,
                  **kwargs
                  ):
-        super(MinimalistDescriptorV4, self).__init__(encoder=encoder,
-                                                     decoder=decoder,
-                                                     learning_rate=learning_rate,
-                                                     **kwargs)
+        super(LED, self).__init__(encoder=encoder,
+                                  decoder=decoder,
+                                  learning_rate=learning_rate,
+                                  **kwargs)
         self.features_per_block = features_per_block
         self.merge_dims_with_features = merge_dims_with_features
         self.description_energy_model = self.make_description_model(latent_code_shape=encoder.output_shape[1:],
@@ -111,7 +112,7 @@ class LED(AE):
     # endregion
 
     def get_config(self) -> Dict[str, Any]:
-        base_config = super(MinimalistDescriptorV4, self).get_config()
+        base_config = super(LED, self).get_config()
         return {
             **base_config,
             "description_energy_model": self.description_energy_model.get_config(),

@@ -5,6 +5,8 @@
       <w>binarize</w>
       <w>maxval</w>
       <w>minval</w>
+      <w>sgld</w>
+      <w>unstandardize</w>
     </words>
   </dictionary>
 </component>

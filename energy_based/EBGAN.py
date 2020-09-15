@@ -3,7 +3,7 @@ import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import Dict, Union
 
-from custom_tf_models import AE
+from custom_tf_models.basic.AE import AE
 
 
 class EBGAN(Model):

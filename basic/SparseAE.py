@@ -3,14 +3,15 @@ import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import Dict
 
-from custom_tf_models.basic import AE
+from custom_tf_models.basic.AE import AE
+from custom_tf_models.utils import LearningRateType
 
 
 class SparseAE(AE):
     def __init__(self,
                  encoder: Model,
                  decoder: Model,
-                 learning_rate=1e-3,
+                 learning_rate: LearningRateType = 1e-3,
                  activity_regularization_factor=1e-5,
                  **kwargs):
         super(SparseAE, self).__init__(encoder=encoder,

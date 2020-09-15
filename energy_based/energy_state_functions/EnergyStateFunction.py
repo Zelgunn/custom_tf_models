@@ -20,5 +20,3 @@ class EnergyStateFunction(object):
              inputs: InputsTensor
              ) -> Union[Tuple[InputsTensor, InputsTensor], InputsTensor]:
         raise NotImplementedError
-
-

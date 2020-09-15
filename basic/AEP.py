@@ -4,7 +4,8 @@ import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import Dict
 
-from custom_tf_models.basic import AE
+from custom_tf_models.basic.AE import AE
+from custom_tf_models.utils import LearningRateType
 
 
 class AEP(AE):
@@ -13,7 +14,7 @@ class AEP(AE):
                  decoder: Model,
                  predictor: Model,
                  input_length: int,
-                 learning_rate=1e-3,
+                 learning_rate: LearningRateType = 1e-3,
                  use_temporal_loss=True,
                  **kwargs):
         super(AEP, self).__init__(encoder=encoder,

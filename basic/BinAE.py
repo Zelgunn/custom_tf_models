@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from custom_tf_models import AE
+from custom_tf_models.basic.AE import AE
 from misc_utils.math_utils import binarize
 
 

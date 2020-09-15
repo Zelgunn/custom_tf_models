@@ -3,8 +3,9 @@ import tensorflow as tf
 from tensorflow.python.keras.models import Model
 from typing import List, Tuple
 
+from custom_tf_models.basic.AE import AE
 from custom_tf_models.energy_based import EBM, EnergyStateFunction
-from custom_tf_models import AE
+from custom_tf_models.utils import LearningRateType
 
 
 class EnergyModel(Model):
@@ -29,7 +30,7 @@ class EBAE(EBM):
                  decoder: Model,
                  energy_state_functions: List[EnergyStateFunction],
                  energy_margin: float = None,
-                 learning_rate=1e-3,
+                 learning_rate: LearningRateType = 1e-3,
                  weights_decay=2e-6,
                  seed=None,
                  **kwargs

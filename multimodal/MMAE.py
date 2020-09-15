@@ -3,7 +3,8 @@ import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import List, Dict
 
-from custom_tf_models import AE
+from custom_tf_models.basic.AE import AE
+from custom_tf_models.utils import LearningRateType
 
 
 class MMAE(Model):
@@ -11,7 +12,7 @@ class MMAE(Model):
                  autoencoders: List[AE],
                  fusion_model: Model,
                  concatenate_latent_codes=False,
-                 learning_rate=1e-3,
+                 learning_rate: LearningRateType = 1e-3,
                  **kwargs):
         super(MMAE, self).__init__(**kwargs)
 
