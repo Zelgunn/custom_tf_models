@@ -21,7 +21,7 @@ class ALED(LED):
                  binarization_temperature=50.0,
                  add_binarization_noise_to_mask=True,
                  description_energy_loss_lambda=1e-2,
-                 gradient_penalty_loss_weight=1e+0,
+                 gradient_penalty_weight=1e+0,
                  seed=None,
                  **kwargs
                  ):
@@ -38,11 +38,13 @@ class ALED(LED):
 
         self.generator = generator
         self.generator_learning_rate = generator_learning_rate
-        self.gradient_penalty_loss_weight = gradient_penalty_loss_weight
+        self.gradient_penalty_weight = gradient_penalty_weight
 
         self.generator_optimizer = tf.keras.optimizers.Adam(learning_rate=generator_learning_rate)
         self.optimizer = (self.optimizer, self.generator_optimizer)
         self.generator_noise_distribution = self._make_generator_input_noise_distribution()
+        self._gradient_penalty_weight = tf.constant(gradient_penalty_weight, dtype=tf.float32,
+                                                    name="gradient_penalty_weight")
 
     @tf.function
     def sample_generator(self, batch_size: Union[int, tf.Tensor]) -> tf.Tensor:
@@ -73,7 +75,7 @@ class ALED(LED):
         real_loss = self.description_energy_loss(real_description_energy)
         fake_loss = - self.description_energy_loss(fake_description_energy)
         description_energy_loss = (real_loss + fake_loss) * self.description_energy_loss_lambda
-        led_gradient_penalty = self.gradient_penalty(real_inputs, fake_inputs) * self.gradient_penalty_loss_weight
+        led_gradient_penalty = self.gradient_penalty(real_inputs, fake_inputs) * self._gradient_penalty_weight
         reconstruction_loss = self.reconstruction_loss(inputs, outputs)
 
         loss = reconstruction_loss + description_energy_loss + led_gradient_penalty
@@ -82,9 +84,9 @@ class ALED(LED):
 
         return {
             "led_loss": loss,
-            "reconstruction_loss": reconstruction_loss,
-            "led_real_loss": real_loss,
-            "led_fake_loss": fake_loss,
+            "led_error": reconstruction_loss,
+            "real_loss": real_loss,
+            "fake_loss": fake_loss,
             "gradient_penalty": led_gradient_penalty,
             "description_length": description_length,
         }
@@ -103,13 +105,14 @@ class ALED(LED):
         loss = reconstruction_loss + self._description_energy_loss_lambda * description_energy_loss
 
         metrics = {
-            "led_loss": loss,
-            "reconstruction_loss": reconstruction_loss,
-            "description_energy_loss": description_energy_loss,
+            "generator_loss": loss,
+            "generator_error": reconstruction_loss,
+            "description_energy": description_energy_loss,
         }
 
         return metrics
 
+    @tf.function
     def train_step(self, inputs) -> Dict[str, tf.Tensor]:
         with tf.GradientTape(watch_accessed_variables=False) as led_tape:
             led_tape.watch(self.led_trainable_variables)
@@ -122,10 +125,10 @@ class ALED(LED):
         with tf.GradientTape(watch_accessed_variables=False) as generator_tape:
             generator_tape.watch(self.generator.trainable_variables)
             generator_metrics = self.compute_generator_loss(inputs)
-            generator_loss = generator_metrics["led_loss"]
+            generator_loss = generator_metrics["generator_loss"]
 
-        generator_gradients = led_tape.gradient(generator_loss, self.generator_trainable_variables)
-        self.generator_optimizer.apply_gradients(zip(generator_gradients, self.generator_trainable_variables))
+        generator_gradients = generator_tape.gradient(generator_loss, self.generator.trainable_variables)
+        self.generator_optimizer.apply_gradients(zip(generator_gradients, self.generator.trainable_variables))
 
         metrics = {**led_metrics, **generator_metrics}
         return metrics
@@ -146,7 +149,7 @@ class ALED(LED):
             **led_config,
             "generator": self.generator.get_config(),
             "generator_learning_rate": self.generator_learning_rate,
-            "gradient_penalty_loss_weight": self.gradient_penalty_loss_weight,
+            "gradient_penalty_weight": self.gradient_penalty_loss_weight,
         }
 
     # region Make generator input noise distribution
