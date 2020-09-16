@@ -15,7 +15,7 @@ class ALED(LED):
                  decoder: Model,
                  generator: Model,
                  learning_rate: LearningRateType,
-                 generator_learning_rate: LearningRateType,
+                 # generator_learning_rate: LearningRateType,
                  features_per_block: int,
                  merge_dims_with_features=False,
                  binarization_temperature=50.0,
@@ -37,11 +37,9 @@ class ALED(LED):
                                    **kwargs)
 
         self.generator = generator
-        self.generator_learning_rate = generator_learning_rate
+        # self.generator_learning_rate = generator_learning_rate
         self.gradient_penalty_weight = gradient_penalty_weight
 
-        self.generator_optimizer = tf.keras.optimizers.Adam(learning_rate=generator_learning_rate)
-        self.optimizer = (self.optimizer, self.generator_optimizer)
         self.generator_noise_distribution = self._make_generator_input_noise_distribution()
         self._gradient_penalty_weight = tf.constant(gradient_penalty_weight, dtype=tf.float32,
                                                     name="gradient_penalty_weight")
@@ -120,7 +118,7 @@ class ALED(LED):
             led_loss = led_metrics["led_loss"]
 
         led_gradients = led_tape.gradient(led_loss, self.led_trainable_variables)
-        self.led_optimizer.apply_gradients(zip(led_gradients, self.led_trainable_variables))
+        self.optimizer.apply_gradients(zip(led_gradients, self.led_trainable_variables))
 
         with tf.GradientTape(watch_accessed_variables=False) as generator_tape:
             generator_tape.watch(self.generator.trainable_variables)
@@ -128,14 +126,10 @@ class ALED(LED):
             generator_loss = generator_metrics["generator_loss"]
 
         generator_gradients = generator_tape.gradient(generator_loss, self.generator.trainable_variables)
-        self.generator_optimizer.apply_gradients(zip(generator_gradients, self.generator.trainable_variables))
+        self.optimizer.apply_gradients(zip(generator_gradients, self.generator.trainable_variables))
 
         metrics = {**led_metrics, **generator_metrics}
         return metrics
-
-    @property
-    def led_optimizer(self) -> tf.keras.optimizers.Adam:
-        return self.optimizer[0]
 
     @property
     def led_trainable_variables(self) -> List:
@@ -148,8 +142,7 @@ class ALED(LED):
         return {
             **led_config,
             "generator": self.generator.get_config(),
-            "generator_learning_rate": self.generator_learning_rate,
-            "gradient_penalty_weight": self.gradient_penalty_loss_weight,
+            "gradient_penalty_weight": self.gradient_penalty_weight,
         }
 
     # region Make generator input noise distribution

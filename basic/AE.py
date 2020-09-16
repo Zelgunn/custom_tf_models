@@ -1,7 +1,6 @@
 # AE : Autoencoder
 import tensorflow as tf
 from tensorflow.python.keras import Model
-from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from tensorflow.python.keras.callbacks import CallbackList
 from typing import Dict
 

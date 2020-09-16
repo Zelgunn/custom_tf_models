@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.python.keras.models import Model, Sequential
 from tensorflow.python.keras.layers import Conv1D, Reshape, TimeDistributed
-from tensorflow.python.keras.initializers import VarianceScaling
+from tensorflow.python.keras.initializers.initializers_v2 import VarianceScaling
 import numpy as np
 from typing import Dict, Any
 
