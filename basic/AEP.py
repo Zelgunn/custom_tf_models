@@ -1,25 +1,21 @@
-# AEP : Autoencoder-Predictor
-
 import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import Dict
 
 from custom_tf_models.basic.AE import AE
-from custom_tf_models.utils import LearningRateType
 
 
+# AEP : Autoencoder-Predictor
 class AEP(AE):
     def __init__(self,
                  encoder: Model,
                  decoder: Model,
                  predictor: Model,
                  input_length: int,
-                 learning_rate: LearningRateType = 1e-3,
                  use_temporal_loss=True,
                  **kwargs):
         super(AEP, self).__init__(encoder=encoder,
                                   decoder=decoder,
-                                  learning_rate=learning_rate,
                                   **kwargs)
         self.predictor = predictor
         self.input_length = input_length

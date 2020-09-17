@@ -4,7 +4,6 @@ from tensorflow.python.keras.layers import Lambda, TimeDistributed
 from typing import Optional, Dict, Union, List
 
 from custom_tf_models.basic.AE import AE
-from custom_tf_models.utils import LearningRateType
 from transformers import Transformer
 
 
@@ -15,7 +14,6 @@ class CNNTransformer(Model):
                  autoencoder: AE,
                  transformer: Transformer,
                  autoencoder_input_shape: Union[tf.TensorShape, List[int]] = None,
-                 learning_rate: LearningRateType = 1e-3,
                  train_only_embeddings=True,
                  **kwargs):
         super(CNNTransformer, self).__init__(**kwargs)
@@ -32,7 +30,6 @@ class CNNTransformer(Model):
         self.autoencoder_input_shape = autoencoder_input_shape
         self.autoencoder = autoencoder
         self.transformer = transformer
-        self.learning_rate = learning_rate
         self.train_only_embeddings = train_only_embeddings
         if train_only_embeddings:
             autoencoder.trainable = False
@@ -51,8 +48,6 @@ class CNNTransformer(Model):
         self.step_encoder = TimeDistributed(Lambda(autoencoder.encode), name="StepEncoder")
         self.step_decoder = TimeDistributed(Lambda(autoencoder.decode), name="StepDecoder")
         # endregion
-
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
         self.transformer_evaluator = transformer.make_evaluator(output_length)
         self._evaluator: Optional[tf.keras.models.Sequential] = None
@@ -218,7 +213,6 @@ class CNNTransformer(Model):
             "output_length": self.output_length,
             "autoencoder": self.autoencoder.get_config(),
             "transformer": self.transformer.get_config(),
-            "learning_rate": self.learning_rate,
         }
         return config
 

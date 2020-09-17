@@ -4,7 +4,6 @@ from tensorflow.python.keras import Model
 from typing import List, Dict
 
 from custom_tf_models.basic.AE import AE
-from custom_tf_models.utils import LearningRateType
 
 
 class MMAE(Model):
@@ -12,7 +11,6 @@ class MMAE(Model):
                  autoencoders: List[AE],
                  fusion_model: Model,
                  concatenate_latent_codes=False,
-                 learning_rate: LearningRateType = 1e-3,
                  **kwargs):
         super(MMAE, self).__init__(**kwargs)
 
@@ -21,7 +19,6 @@ class MMAE(Model):
         self.concatenate_latent_codes = concatenate_latent_codes
 
         self.optimizer = None
-        self.set_optimizer(tf.keras.optimizers.Adam(learning_rate=learning_rate))
 
     def call(self, inputs, training=None, mask=None):
         latent_codes = []

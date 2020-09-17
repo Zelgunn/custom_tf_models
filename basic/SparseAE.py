@@ -1,22 +1,19 @@
-# SparseAE : Sparse Autoencoder
 import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import Dict
 
 from custom_tf_models.basic.AE import AE
-from custom_tf_models.utils import LearningRateType
 
 
+# SparseAE : Sparse Autoencoder
 class SparseAE(AE):
     def __init__(self,
                  encoder: Model,
                  decoder: Model,
-                 learning_rate: LearningRateType = 1e-3,
                  activity_regularization_factor=1e-5,
                  **kwargs):
         super(SparseAE, self).__init__(encoder=encoder,
                                        decoder=decoder,
-                                       learning_rate=learning_rate,
                                        **kwargs)
         self.activity_regularization_factor = activity_regularization_factor
 
@@ -36,9 +33,7 @@ class SparseAE(AE):
 
     def get_config(self):
         config = {
-            "encoder": self.encoder.get_config(),
-            "decoder": self.decoder.get_config(),
-            "learning_rate": self.learning_rate,
+            **super(SparseAE, self).get_config(),
             "activity_regularization_factor": self.activity_regularization_factor
         }
         return config

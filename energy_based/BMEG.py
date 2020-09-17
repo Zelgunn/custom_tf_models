@@ -1,4 +1,3 @@
-# EBGAN : Bimodal Energy-based Generative Adversarial Network
 import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import Dict, Union, List, Tuple
@@ -7,6 +6,7 @@ from utils import gradient_difference_loss
 from misc_utils.math_utils import reduce_mean_from
 
 
+# EBGAN : Bimodal Energy-based Generative Adversarial Network
 class ModalityModels(Model):
     def __init__(self,
                  encoder: Model,

@@ -1,9 +1,9 @@
-# TDAE : Time Distributed Autoencoder
 import tensorflow as tf
 
 from custom_tf_models.basic.AE import AE
 
 
+# TDAE : Time Distributed Autoencoder
 class TDAE(AE):
     def encode(self, inputs):
         return apply_over_time(inputs, super(TDAE, self).encode)

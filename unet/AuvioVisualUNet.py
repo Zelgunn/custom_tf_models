@@ -3,7 +3,6 @@ from tensorflow.python.keras import Model
 from typing import Dict
 
 from custom_tf_models.unet.UNet import UNet
-from custom_tf_models.utils import LearningRateType
 
 
 class AudioVideoUNet(Model):
@@ -11,15 +10,12 @@ class AudioVideoUNet(Model):
                  image_unet: UNet,
                  audio_unet: UNet,
                  time_unet: UNet,
-                 learning_rate: LearningRateType = 1e-3,
                  **kwargs
                  ):
         super(AudioVideoUNet, self).__init__(**kwargs)
         self.image_unet = image_unet
         self.audio_unet = audio_unet
         self.time_unet = time_unet
-
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
     def call(self, inputs, training=None, mask=None):
         audio, video = inputs

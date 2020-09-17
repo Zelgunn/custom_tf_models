@@ -1,28 +1,21 @@
-# AE : Autoencoder
 import tensorflow as tf
 from tensorflow.python.keras import Model
 from tensorflow.python.keras.callbacks import CallbackList
 from typing import Dict
 
-from custom_tf_models.utils import LearningRateType
 from misc_utils.train_utils import CustomLearningRateSchedule
 
 
+# AE : (Vanilla) Autoencoder
 class AE(Model):
     def __init__(self,
                  encoder: Model,
                  decoder: Model,
-                 learning_rate: LearningRateType = None,
                  **kwargs):
         super(AE, self).__init__(**kwargs)
 
         self.encoder = encoder
         self.decoder = decoder
-        self.learning_rate = learning_rate
-
-        self.optimizer = None
-        if self.learning_rate is not None:
-            self.optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 
     @tf.function
     def call(self, inputs, training=None, mask=None):
@@ -78,6 +71,8 @@ class AE(Model):
         config = {
             "encoder": self.encoder.get_config(),
             "decoder": self.decoder.get_config(),
-            "learning_rate": self.learning_rate
         }
+        if self.optimizer is not None:
+            config["optimizer"] = self.optimizer.get_config()
+
         return config

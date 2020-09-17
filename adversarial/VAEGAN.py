@@ -13,7 +13,6 @@ class VAEGAN(VAE):
                  encoder: Model,
                  decoder: Model,
                  discriminator: Model,
-                 autoencoder_learning_rate=1e-3,
                  discriminator_learning_rate=1e-4,
                  balance_discriminator_learning_rate=True,
                  reconstruction_loss_factor=100.0,
@@ -29,7 +28,6 @@ class VAEGAN(VAE):
 
         self.discriminator = discriminator
 
-        self.autoencoder_learning_rate = autoencoder_learning_rate
         self.discriminator_learning_rate = discriminator_learning_rate
         self.balance_discriminator_learning_rate = balance_discriminator_learning_rate
 
@@ -39,8 +37,6 @@ class VAEGAN(VAE):
         self.generator_fake_loss = tf.Variable(initial_value=1.0)
         self.discriminator_fake_loss = tf.Variable(initial_value=1.0)
 
-        self.encoder_optimizer = tf.keras.optimizers.Adam(autoencoder_learning_rate, beta_1=0.5, beta_2=0.9)
-        self.decoder_optimizer = tf.keras.optimizers.Adam(autoencoder_learning_rate, beta_1=0.5, beta_2=0.9)
         self.discriminator_optimizer = tf.keras.optimizers.Adam(self._get_discriminator_learning_rate,
                                                                 beta_1=0.5, beta_2=0.999)
 
@@ -87,8 +83,8 @@ class VAEGAN(VAE):
         discriminator_gradients = discriminator_tape.gradient(discriminator_loss,
                                                               self.discriminator.trainable_variables)
 
-        self.encoder_optimizer.apply_gradients(zip(encoder_gradients, self.encoder.trainable_variables))
-        self.decoder_optimizer.apply_gradients(zip(decoder_gradients, self.decoder.trainable_variables))
+        self.optimizer.apply_gradients(zip(encoder_gradients, self.encoder.trainable_variables))
+        self.optimizer.apply_gradients(zip(decoder_gradients, self.decoder.trainable_variables))
         self.discriminator_optimizer.apply_gradients(zip(discriminator_gradients,
                                                          self.discriminator.trainable_variables))
 
@@ -154,10 +150,8 @@ class VAEGAN(VAE):
 
     def get_config(self):
         config = {
-            "encoder": self.encoder.get_config(),
-            "decoder": self.decoder.get_config(),
+            **super(VAEGAN, self).get_config(),
             "discriminator": self.discriminator.get_config(),
-            "autoencoder_learning_rate": self.autoencoder_learning_rate,
             "discriminator_learning_rate": self.discriminator_learning_rate,
             "balance_discriminator_learning_rate": self.balance_discriminator_learning_rate,
             "reconstruction_loss_factor": self.reconstruction_loss_factor,

@@ -1,13 +1,13 @@
-# EBAE : Energy-based Autoencoder
 import tensorflow as tf
 from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.optimizers.optimizer_v2 import OptimizerV2
 from typing import List, Tuple
 
 from custom_tf_models.basic.AE import AE
 from custom_tf_models.energy_based import EBM, EnergyStateFunction
-from custom_tf_models.utils import LearningRateType
 
 
+# EBAE : Energy-based Autoencoder
 class EnergyModel(Model):
     def __init__(self, autoencoder: AE, **kwargs):
         super(EnergyModel, self).__init__(**kwargs)
@@ -29,8 +29,8 @@ class EBAE(EBM):
                  encoder: Model,
                  decoder: Model,
                  energy_state_functions: List[EnergyStateFunction],
+                 optimizer: OptimizerV2,
                  energy_margin: float = None,
-                 learning_rate: LearningRateType = 1e-3,
                  weights_decay=2e-6,
                  seed=None,
                  **kwargs
@@ -38,7 +38,7 @@ class EBAE(EBM):
         energy_model = EnergyModel(autoencoder=AE(encoder=encoder, decoder=decoder))
         super(EBAE, self).__init__(energy_model=energy_model,
                                    energy_state_functions=energy_state_functions,
-                                   optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
+                                   optimizer=optimizer,
                                    energy_margin=energy_margin,
                                    weights_decay=weights_decay,
                                    seed=seed,

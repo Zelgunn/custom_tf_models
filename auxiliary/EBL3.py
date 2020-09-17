@@ -1,6 +1,5 @@
 import tensorflow as tf
 from tensorflow.python.keras import Model
-from tensorflow.python.keras.optimizer_v2.optimizer_v2 import OptimizerV2
 from typing import Dict, Tuple
 
 from custom_tf_models.basic.AE import AE
@@ -11,7 +10,6 @@ class EBL3(Model):
                  audio_autoencoder: AE,
                  video_autoencoder: AE,
                  fusion_autoencoder: AE,
-                 optimizer: OptimizerV2,
                  energy_margin: float,
                  **kwargs
                  ):
@@ -20,7 +18,6 @@ class EBL3(Model):
         self.audio_autoencoder = audio_autoencoder
         self.video_autoencoder = video_autoencoder
         self.fusion_autoencoder = fusion_autoencoder
-        self.optimizer = optimizer
         self.energy_margin = energy_margin
 
         self._energy_margin = tf.constant(energy_margin, dtype=tf.float32, name="energy_margin")

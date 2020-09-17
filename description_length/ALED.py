@@ -4,7 +4,6 @@ from tensorflow.python.keras.models import Model
 from typing import Dict, Any, Union, List
 
 from custom_tf_models.description_length.LED import LED
-from custom_tf_models.utils import LearningRateType
 from custom_tf_models.adversarial.GANLoss import gradient_penalty
 
 
@@ -14,7 +13,6 @@ class ALED(LED):
                  encoder: Model,
                  decoder: Model,
                  generator: Model,
-                 learning_rate: LearningRateType,
                  # generator_learning_rate: LearningRateType,
                  features_per_block: int,
                  merge_dims_with_features=False,
@@ -27,7 +25,6 @@ class ALED(LED):
                  ):
         super(ALED, self).__init__(encoder=encoder,
                                    decoder=decoder,
-                                   learning_rate=learning_rate,
                                    features_per_block=features_per_block,
                                    merge_dims_with_features=merge_dims_with_features,
                                    binarization_temperature=binarization_temperature,

@@ -1,10 +1,8 @@
 import tensorflow as tf
-from typing import Callable, Union
+from typing import Callable
 
 from misc_utils.general import get_known_shape
 from misc_utils.math_utils import diff
-
-LearningRateType = Union[float, Callable]
 
 
 # @tf.function

@@ -1,4 +1,3 @@
-# ARIAE : Autoregressive Interpolating Autoencoder
 import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import Dict
@@ -7,6 +6,7 @@ from transformers import Transformer
 from custom_tf_models import IAE
 
 
+# ARIAE : Autoregressive Interpolating Autoencoder
 class ARIAE(Model):
     def __init__(self,
                  iae: IAE,

@@ -4,19 +4,15 @@ from typing import List, Tuple
 
 from custom_tf_models.basic.IAE import IAE
 from custom_tf_models.multimodal import MMAE
-from custom_tf_models.utils import LearningRateType
 from utils import split_steps
 
 
 class MIAE(MMAE):
     def __init__(self,
                  autoencoders: List[IAE],
-                 learning_rate: LearningRateType = 1e-3,
                  seed=None,
                  **kwargs):
-        super(MIAE, self).__init__(autoencoders=autoencoders,
-                                   learning_rate=learning_rate,
-                                   **kwargs)
+        super(MIAE, self).__init__(autoencoders=autoencoders, **kwargs)
         self.seed = seed
 
     @tf.function

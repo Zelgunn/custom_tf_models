@@ -14,8 +14,7 @@ class IAEGAN(IAE):
                  decoder: Model,
                  discriminator: Model,
                  step_size: int,
-                 autoencoder_learning_rate=1e-3,
-                 discriminator_learning_rate=1e-3,
+                 discriminator_optimizer: OptimizerV2,
                  reconstruction_loss_weight=1e3,
                  wgan=True,
                  seed=None,
@@ -23,11 +22,9 @@ class IAEGAN(IAE):
         super(IAEGAN, self).__init__(encoder=encoder,
                                      decoder=decoder,
                                      step_size=step_size,
-                                     learning_rate=autoencoder_learning_rate,
                                      seed=seed)
         self.discriminator = discriminator
-        self.discriminator_learning_rate = discriminator_learning_rate
-        self.discriminator.optimizer = tf.keras.optimizers.Adam(learning_rate=self.discriminator_learning_rate)
+        self.discriminator.optimizer = discriminator_optimizer
         self.reconstruction_loss_weight = reconstruction_loss_weight
         self._reconstruction_loss_weight = tf.constant(value=reconstruction_loss_weight, dtype=tf.float32,
                                                        name="reconstruction_loss_weight")
@@ -229,8 +226,6 @@ class IAEGAN(IAE):
         base_config = super(IAEGAN, self).get_config()
         config = {
             **base_config,
-            "autoencoder_learning_rate": self.learning_rate,
-            "discriminator_learning_rate": self.discriminator_learning_rate,
             "reconstruction_loss_weight": self.reconstruction_loss_weight,
             "wgan": self.wgan,
             "seed": self.seed,

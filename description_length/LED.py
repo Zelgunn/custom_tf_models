@@ -6,7 +6,6 @@ import numpy as np
 from typing import Dict, Any
 
 from custom_tf_models.basic.AE import AE
-from custom_tf_models.utils import LearningRateType
 from CustomKerasLayers import TileLayer
 from misc_utils.math_utils import binarize, reduce_mean_from
 from misc_utils.general import expand_dims_to_rank
@@ -17,7 +16,6 @@ class LED(AE):
     def __init__(self,
                  encoder: Model,
                  decoder: Model,
-                 learning_rate: LearningRateType,
                  features_per_block: int,
                  merge_dims_with_features=False,
                  descriptors_activation="tanh",
@@ -31,7 +29,6 @@ class LED(AE):
                  ):
         super(LED, self).__init__(encoder=encoder,
                                   decoder=decoder,
-                                  learning_rate=learning_rate,
                                   **kwargs)
         self.features_per_block = features_per_block
         self.merge_dims_with_features = merge_dims_with_features

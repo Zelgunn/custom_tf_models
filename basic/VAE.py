@@ -1,24 +1,21 @@
-# VAE : Variational Autoencoder
 import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.python.keras import Model
 from typing import Dict
 
 from custom_tf_models.basic.AE import AE
-from custom_tf_models.utils import LearningRateType
 
 
+# VAE : Variational Autoencoder
 class VAE(AE):
     def __init__(self,
                  encoder: Model,
                  decoder: Model,
-                 learning_rate: LearningRateType = None,
                  kl_divergence_loss_factor=1e-2,
                  seed=None,
                  **kwargs):
         super(VAE, self).__init__(encoder=encoder,
                                   decoder=decoder,
-                                  learning_rate=learning_rate,
                                   **kwargs)
         self.kl_divergence_loss_factor = kl_divergence_loss_factor
         self.seed = seed
@@ -55,9 +52,7 @@ class VAE(AE):
 
     def get_config(self):
         return {
-            "encoder": self.encoder.get_config(),
-            "decoder": self.decoder.get_config(),
-            "learning_rate": self.learning_rate,
+            **super(VAE, self).get_config(),
             "kl_divergence_factor": self.kl_divergence_loss_factor,
             "seed": self.seed,
         }
