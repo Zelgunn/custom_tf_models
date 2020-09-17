@@ -1,6 +1,5 @@
 import tensorflow as tf
 from tensorflow.python.keras.models import Model
-from tensorflow.python.keras.optimizers.optimizer_v2 import OptimizerV2
 from typing import List, Tuple
 
 from custom_tf_models.basic.AE import AE
