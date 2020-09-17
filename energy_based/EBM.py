@@ -12,7 +12,6 @@ class EBM(Model):
     def __init__(self,
                  energy_model: Model,
                  energy_state_functions: List[EnergyStateFunction],
-                 optimizer: tf.keras.optimizers.Optimizer,
                  energy_margin: float = None,
                  weights_decay=2e-6,
                  seed=None,
@@ -25,8 +24,6 @@ class EBM(Model):
         self.energy_margin = energy_margin
         self.weights_decay = weights_decay
         self.seed = seed
-
-        self.optimizer = optimizer
 
     def call(self, inputs, training=None, mask=None) -> Union[tf.Tensor, List[tf.Tensor]]:
         energies = self.energy_model(inputs)

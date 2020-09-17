@@ -29,7 +29,6 @@ class EBAE(EBM):
                  encoder: Model,
                  decoder: Model,
                  energy_state_functions: List[EnergyStateFunction],
-                 optimizer: OptimizerV2,
                  energy_margin: float = None,
                  weights_decay=2e-6,
                  seed=None,
@@ -38,7 +37,6 @@ class EBAE(EBM):
         energy_model = EnergyModel(autoencoder=AE(encoder=encoder, decoder=decoder))
         super(EBAE, self).__init__(energy_model=energy_model,
                                    energy_state_functions=energy_state_functions,
-                                   optimizer=optimizer,
                                    energy_margin=energy_margin,
                                    weights_decay=weights_decay,
                                    seed=seed,
