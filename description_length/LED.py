@@ -24,6 +24,7 @@ class LED(AE):
                  binarization_temperature=50.0,
                  add_binarization_noise_to_mask=True,
                  description_energy_loss_lambda=1e-2,
+                 noise_stddev=0.1,
                  seed=None,
                  **kwargs
                  ):
@@ -37,6 +38,7 @@ class LED(AE):
         self.binarization_temperature = binarization_temperature
         self.add_binarization_noise_to_mask = add_binarization_noise_to_mask
         self.description_energy_loss_lambda = description_energy_loss_lambda
+        self.noise_stddev = noise_stddev
         self.seed = seed
 
         self.description_energy_model = self._make_description_model()
@@ -135,16 +137,19 @@ class LED(AE):
         return tf.reduce_mean(tf.square(inputs - outputs))
 
     @tf.function
-    def description_energy_loss(self, description_energy: tf.Tensor) -> tf.Tensor:
-        return tf.reduce_mean(description_energy)
+    def description_energy_loss(self, description_energy: tf.Tensor, noise_factor: tf.Tensor) -> tf.Tensor:
+        description_energy = reduce_mean_from(description_energy, start_axis=1)
+        weights = tf.constant(1.0) - tf.square(noise_factor)
+        description_energy = description_energy * weights
+        description_energy = tf.reduce_mean(description_energy)
+        return description_energy
 
     @tf.function
     def compute_loss(self, inputs) -> Dict[str, tf.Tensor]:
         batch_size = tf.shape(inputs)[0]
         noise_factor = tf.random.uniform([batch_size], maxval=1.0, seed=self.seed)
-        noise_factor = expand_dims_to_rank(noise_factor, inputs)
-        noise = tf.random.normal(tf.shape(inputs), stddev=0.1, seed=self.seed)
-        noisy_inputs = inputs + noise * noise_factor
+        noise = tf.random.normal(tf.shape(inputs), stddev=self.noise_stddev, seed=self.seed)
+        noisy_inputs = inputs + noise * expand_dims_to_rank(noise_factor, inputs)
 
         encoded = self.encoder(noisy_inputs)
         description_energy = self.description_energy_model(encoded)
@@ -153,7 +158,7 @@ class LED(AE):
         outputs = self.decode(encoded)
 
         reconstruction_loss = self.reconstruction_loss(inputs, outputs)
-        description_energy_loss = self.description_energy_loss(description_energy)
+        description_energy_loss = self.description_energy_loss(description_energy, noise_factor)
         loss = reconstruction_loss + self._description_energy_loss_lambda * description_energy_loss
 
         description_length = tf.reduce_mean(tf.stop_gradient(description_mask))
@@ -179,6 +184,8 @@ class LED(AE):
             "merge_dims_with_features": self.merge_dims_with_features,
             "binarization_temperature": self.binarization_temperature,
             "add_binarization_noise_to_mask": self.add_binarization_noise_to_mask,
+            "description_energy_loss_lambda": self.description_energy_loss_lambda,
+            "noise_stddev": self.noise_stddev,
             "seed": self.seed,
         }
 
