@@ -141,7 +141,7 @@ class LED(AE):
     @tf.function
     def description_energy_loss(self, description_energy: tf.Tensor, noise_factor: tf.Tensor) -> tf.Tensor:
         description_energy = reduce_mean_from(description_energy, start_axis=1)
-        if self.self.reconstruct_noise:
+        if self.reconstruct_noise:
             weights = tf.constant(1.0) - tf.square(noise_factor)
             description_energy = description_energy * weights
         description_energy = tf.reduce_mean(description_energy)
