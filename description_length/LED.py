@@ -3,7 +3,7 @@ from tensorflow.python.keras.models import Model, Sequential
 from tensorflow.python.keras.layers import Conv1D, Reshape, TimeDistributed
 from tensorflow.python.keras.initializers.initializers_v2 import VarianceScaling
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from custom_tf_models.basic.AE import AE
 from CustomKerasLayers import TileLayer
@@ -22,6 +22,7 @@ class LED(AE):
                  binarization_temperature=50.0,
                  add_binarization_noise_to_mask=True,
                  description_energy_loss_lambda=1e-2,
+                 use_noise=True,
                  noise_stddev=0.1,
                  reconstruct_noise=False,
                  seed=None,
@@ -36,6 +37,7 @@ class LED(AE):
         self.binarization_temperature = binarization_temperature
         self.add_binarization_noise_to_mask = add_binarization_noise_to_mask
         self.description_energy_loss_lambda = description_energy_loss_lambda
+        self.use_noise = use_noise
         self.noise_stddev = noise_stddev
         self.reconstruct_noise = reconstruct_noise
         self.seed = seed
@@ -136,9 +138,9 @@ class LED(AE):
         return tf.reduce_mean(tf.square(inputs - outputs))
 
     @tf.function
-    def description_energy_loss(self, description_energy: tf.Tensor, noise_factor: tf.Tensor) -> tf.Tensor:
+    def description_energy_loss(self, description_energy: tf.Tensor, noise_factor: Optional[tf.Tensor]) -> tf.Tensor:
         description_energy = reduce_mean_from(description_energy, start_axis=1)
-        if self.reconstruct_noise:
+        if self.use_noise and self.reconstruct_noise:
             weights = tf.constant(1.0) - tf.square(noise_factor)
             description_energy = description_energy * weights
         description_energy = tf.reduce_mean(description_energy)
@@ -146,15 +148,22 @@ class LED(AE):
 
     @tf.function
     def compute_loss(self, inputs) -> Dict[str, tf.Tensor]:
-        # region Noisy inputs
+        # region Inputs
         batch_size = tf.shape(inputs)[0]
-        noise_factor = tf.random.uniform([batch_size], maxval=1.0, seed=self.seed)
-        noise = tf.random.normal(tf.shape(inputs), stddev=self.noise_stddev, seed=self.seed)
-        noisy_inputs = inputs + noise * expand_dims_to_rank(noise_factor, inputs)
+        if self.use_noise:
+            noise_factor = tf.random.uniform([batch_size], maxval=1.0, seed=self.seed)
+            noise = tf.random.normal(tf.shape(inputs), stddev=self.noise_stddev, seed=self.seed)
+            noisy_inputs = inputs + noise * expand_dims_to_rank(noise_factor, inputs)
+
+            reconstruction_target = noisy_inputs if self.reconstruct_noise else inputs
+            inputs = noisy_inputs
+        else:
+            noise_factor = tf.zeros([batch_size], dtype=tf.float32)
+            reconstruction_target = inputs
         # endregion
 
         # region Forward
-        encoded = self.encoder(noisy_inputs)
+        encoded = self.encoder(inputs)
         description_energy = self.description_energy_model(encoded)
         description_mask = self.get_description_mask(description_energy)
         encoded *= description_mask
@@ -162,7 +171,7 @@ class LED(AE):
         # endregion
 
         # region Loss
-        reconstruction_target = noisy_inputs if self.reconstruct_noise else inputs
+
         reconstruction_loss = self.reconstruction_loss(reconstruction_target, outputs)
         description_energy_loss = self.description_energy_loss(description_energy, noise_factor)
         loss = reconstruction_loss + self._description_energy_loss_lambda * description_energy_loss
@@ -194,6 +203,7 @@ class LED(AE):
             "binarization_temperature": self.binarization_temperature,
             "add_binarization_noise_to_mask": self.add_binarization_noise_to_mask,
             "description_energy_loss_lambda": self.description_energy_loss_lambda,
+            "use_noise": self.use_noise,
             "noise_stddev": self.noise_stddev,
             "reconstruct_noise": self.reconstruct_noise,
             "seed": self.seed,
