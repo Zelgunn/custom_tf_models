@@ -16,6 +16,7 @@ class ALED(LED):
                  # generator_learning_rate: LearningRateType,
                  features_per_block: int,
                  merge_dims_with_features=False,
+                 descriptors_activation="tanh",
                  binarization_temperature=50.0,
                  add_binarization_noise_to_mask=True,
                  description_energy_loss_lambda=1e-2,
@@ -27,9 +28,11 @@ class ALED(LED):
                                    decoder=decoder,
                                    features_per_block=features_per_block,
                                    merge_dims_with_features=merge_dims_with_features,
+                                   descriptors_activation=descriptors_activation,
                                    binarization_temperature=binarization_temperature,
                                    add_binarization_noise_to_mask=add_binarization_noise_to_mask,
                                    description_energy_loss_lambda=description_energy_loss_lambda,
+                                   use_noise=False,
                                    seed=seed,
                                    **kwargs)
 
@@ -70,20 +73,20 @@ class ALED(LED):
         real_loss = self.description_energy_loss(real_description_energy)
         fake_loss = - self.description_energy_loss(fake_description_energy)
         description_energy_loss = (real_loss + fake_loss) * self.description_energy_loss_lambda
-        led_gradient_penalty = self.gradient_penalty(real_inputs, fake_inputs) * self._gradient_penalty_weight
+        # led_gradient_penalty = self.gradient_penalty(real_inputs, fake_inputs) * self._gradient_penalty_weight
         reconstruction_loss = self.reconstruction_loss(inputs, outputs)
 
-        loss = reconstruction_loss + description_energy_loss + led_gradient_penalty
+        loss = reconstruction_loss + description_energy_loss  # + led_gradient_penalty
 
         description_length = tf.reduce_mean(tf.stop_gradient(description_mask))
 
         return {
-            "led_loss": loss,
-            "led_error": reconstruction_loss,
-            "real_loss": real_loss,
-            "fake_loss": fake_loss,
-            "gradient_penalty": led_gradient_penalty,
-            "description_length": description_length,
+            "led/loss": loss,
+            "led/reconstruction_loss": reconstruction_loss,
+            "led/real_loss": real_loss,
+            "led/fake_loss": fake_loss,
+            # "gradient_penalty": led_gradient_penalty,
+            "led/description_length": description_length,
         }
 
     @tf.function
@@ -95,14 +98,15 @@ class ALED(LED):
         description_mask = self.get_description_mask(description_energy)
         outputs = self.decode(encoded * description_mask)
 
-        reconstruction_loss = self.reconstruction_loss(inputs, outputs)
+        # reconstruction_loss = self.reconstruction_loss(inputs, outputs)
         description_energy_loss = self.description_energy_loss(description_energy)
-        loss = reconstruction_loss + self._description_energy_loss_lambda * description_energy_loss
+        loss = self._description_energy_loss_lambda * description_energy_loss
+        # loss = reconstruction_loss + self._description_energy_loss_lambda * description_energy_loss
 
         metrics = {
-            "generator_loss": loss,
-            "generator_error": reconstruction_loss,
-            "description_energy": description_energy_loss,
+            "generator/loss": loss,
+            # "generator_error": reconstruction_loss,
+            "generator/description_energy": description_energy_loss,
         }
 
         return metrics
@@ -112,7 +116,7 @@ class ALED(LED):
         with tf.GradientTape(watch_accessed_variables=False) as led_tape:
             led_tape.watch(self.led_trainable_variables)
             led_metrics = self.compute_led_loss(inputs)
-            led_loss = led_metrics["led_loss"]
+            led_loss = led_metrics["led/loss"]
 
         led_gradients = led_tape.gradient(led_loss, self.led_trainable_variables)
         self.optimizer.apply_gradients(zip(led_gradients, self.led_trainable_variables))
@@ -120,7 +124,7 @@ class ALED(LED):
         with tf.GradientTape(watch_accessed_variables=False) as generator_tape:
             generator_tape.watch(self.generator.trainable_variables)
             generator_metrics = self.compute_generator_loss(inputs)
-            generator_loss = generator_metrics["generator_loss"]
+            generator_loss = generator_metrics["generator/loss"]
 
         generator_gradients = generator_tape.gradient(generator_loss, self.generator.trainable_variables)
         self.optimizer.apply_gradients(zip(generator_gradients, self.generator.trainable_variables))

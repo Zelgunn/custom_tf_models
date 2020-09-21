@@ -77,7 +77,7 @@ class LED(AE):
 
         shared_params = {
             "kernel_initializer": VarianceScaling(seed=seed, scale=1.0),
-            "kernel_size": 13,  # Current field size : (13 - 1) * 5 + 1 = 61
+            "kernel_size": 27,  # Current field size : (27 - 1) * 5 + 1 = 131
             "padding": "causal"
         }
         conv_layers = [
@@ -138,10 +138,11 @@ class LED(AE):
         return tf.reduce_mean(tf.square(inputs - outputs))
 
     @tf.function
-    def description_energy_loss(self, description_energy: tf.Tensor, noise_factor: Optional[tf.Tensor]) -> tf.Tensor:
+    def description_energy_loss(self, description_energy: tf.Tensor, noise_factor: tf.Tensor = 0.0) -> tf.Tensor:
         description_energy = reduce_mean_from(description_energy, start_axis=1)
         if self.use_noise and self.reconstruct_noise:
-            weights = tf.constant(1.0) - tf.square(noise_factor)
+            # weights = tf.constant(1.0) - tf.square(noise_factor)
+            weights = tf.constant(1.0) - noise_factor
             description_energy = description_energy * weights
         description_energy = tf.reduce_mean(description_energy)
         return description_energy
