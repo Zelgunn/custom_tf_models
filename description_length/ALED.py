@@ -96,17 +96,20 @@ class ALED(LED):
         encoded = self.encoder(fake_inputs)
         description_energy = self.description_energy_model(encoded)
         description_mask = self.get_description_mask(description_energy)
-        outputs = self.decode(encoded * description_mask)
+        # outputs = self.decode(encoded * description_mask)
 
         # reconstruction_loss = self.reconstruction_loss(inputs, outputs)
         description_energy_loss = self.description_energy_loss(description_energy)
         loss = self._description_energy_loss_lambda * description_energy_loss
         # loss = reconstruction_loss + self._description_energy_loss_lambda * description_energy_loss
 
+        description_length = tf.reduce_mean(tf.stop_gradient(description_mask))
+
         metrics = {
             "generator/loss": loss,
-            # "generator_error": reconstruction_loss,
+            # "generator/reconstruction_loss": reconstruction_loss,
             "generator/description_energy": description_energy_loss,
+            "generator/description_length": description_length,
         }
 
         return metrics
