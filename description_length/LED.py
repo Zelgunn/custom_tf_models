@@ -1,7 +1,8 @@
 import tensorflow as tf
 from tensorflow.python.keras.models import Model, Sequential
 from tensorflow.python.keras.layers import Conv1D, Reshape, TimeDistributed
-from tensorflow.python.keras.initializers.initializers_v2 import VarianceScaling
+# noinspection PyUnresolvedReferences
+from tensorflow.python.keras.initializers import VarianceScaling
 import numpy as np
 from typing import Dict, Any, Optional
 
@@ -77,7 +78,7 @@ class LED(AE):
 
         shared_params = {
             "kernel_initializer": VarianceScaling(seed=seed, scale=1.0),
-            "kernel_size": 27,  # Current field size : (27 - 1) * 5 + 1 = 131
+            "kernel_size": 13,  # Current field size : (13 - 1) * 5 + 1 = 61
             "padding": "causal"
         }
         conv_layers = [
