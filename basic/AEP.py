@@ -3,6 +3,7 @@ from tensorflow.python.keras import Model
 from typing import Dict
 
 from custom_tf_models.basic.AE import AE
+from misc_utils.math_utils import reduce_mean_from
 
 
 # AEP : Autoencoder-Predictor
@@ -39,10 +40,11 @@ class AEP(AE):
                      inputs
                      ) -> Dict[str, tf.Tensor]:
         outputs = self(inputs)
-        loss = tf.reduce_mean(tf.square(inputs - outputs))
+        loss = reduce_mean_from(tf.square(inputs - outputs), start_axis=2)
         if self.use_temporal_loss:
             output_length = tf.shape(outputs)[1] - self.input_length
-            loss *= get_temporal_loss_weights(self.input_length, output_length)
+            weights = get_temporal_loss_weights(self.input_length, output_length)
+            loss = tf.reduce_mean(loss * weights)
         return {"loss": loss}
 
     def get_config(self):
@@ -60,8 +62,13 @@ class AEP(AE):
 @tf.function
 def get_temporal_loss_weights(input_length, output_length, start=1.0, stop=0.1):
     reconstruction_loss_weights = tf.ones([input_length], dtype=tf.float32)
+
+    input_length = tf.cast(input_length, tf.float32)
+    output_length = tf.cast(output_length, tf.float32)
     step = (stop - start) / output_length
+
     prediction_loss_weights = tf.range(start=start, limit=stop, delta=step, dtype=tf.float32)
+
     loss_weights = tf.concat([reconstruction_loss_weights, prediction_loss_weights], axis=0)
     loss_weights *= (input_length + output_length) / tf.reduce_sum(loss_weights)
     loss_weights = tf.expand_dims(loss_weights, axis=0)

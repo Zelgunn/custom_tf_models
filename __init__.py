@@ -23,3 +23,5 @@ from custom_tf_models.basic.BinAE import BinAE
 from custom_tf_models.description_length.LED import LED
 # noinspection PyUnresolvedReferences
 from custom_tf_models.description_length.ALED import ALED
+# noinspection PyUnresolvedReferences
+from custom_tf_models.description_length.PreLED import PreLED

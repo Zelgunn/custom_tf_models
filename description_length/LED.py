@@ -1,10 +1,9 @@
 import tensorflow as tf
 from tensorflow.python.keras.models import Model, Sequential
 from tensorflow.python.keras.layers import Conv1D, Reshape, TimeDistributed
-# noinspection PyUnresolvedReferences
-from tensorflow.python.keras.initializers import VarianceScaling
+from tensorflow.python.ops.init_ops import VarianceScaling
 import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Tuple
 
 from custom_tf_models.basic.AE import AE
 from CustomKerasLayers import TileLayer
@@ -76,18 +75,25 @@ class LED(AE):
             raise ValueError("`output_activation` must be in ({}). Got {}."
                              .format(valid_activations, descriptors_activation))
 
+        kernel_size = 13  # Current field size : (13 - 1) * 5 + 1 = 61
         shared_params = {
             "kernel_initializer": VarianceScaling(seed=seed, scale=1.0),
-            "kernel_size": 13,  # Current field size : (13 - 1) * 5 + 1 = 61
-            "padding": "causal"
+            "kernel_size": kernel_size,
+            "padding": "causal",
+            "activation": "relu",
         }
         conv_layers = [
-            Conv1D(filters=32, activation="relu", **shared_params),
-            Conv1D(filters=16, activation="relu", **shared_params),
-            Conv1D(filters=8, activation="relu", **shared_params),
-            Conv1D(filters=4, activation="relu", **shared_params),
-            Conv1D(filters=1, activation=descriptors_activation, **shared_params)
+            Conv1D(filters=32, **shared_params),
+            Conv1D(filters=16, **shared_params),
+            Conv1D(filters=8, **shared_params),
+            Conv1D(filters=4, **shared_params),
         ]
+        last_conv_layer = Conv1D(filters=1,
+                                 activation=descriptors_activation,
+                                 kernel_initializer=tf.keras.initializers.Constant(1.0 / kernel_size),
+                                 kernel_size=kernel_size,
+                                 padding="causal")
+        conv_layers.append(last_conv_layer)
 
         if merge_dims_with_features:
             target_input_shape = (block_count, features_per_block)
@@ -133,48 +139,20 @@ class LED(AE):
     # endregion
 
     # region Loss
-
-    @tf.function
-    def reconstruction_loss(self, inputs: tf.Tensor, outputs: tf.Tensor) -> tf.Tensor:
-        return tf.reduce_mean(tf.square(inputs - outputs))
-
-    @tf.function
-    def description_energy_loss(self, description_energy: tf.Tensor, noise_factor: tf.Tensor = 0.0) -> tf.Tensor:
-        description_energy = reduce_mean_from(description_energy, start_axis=1)
-        if self.use_noise and self.reconstruct_noise:
-            # weights = tf.constant(1.0) - tf.square(noise_factor)
-            weights = tf.constant(1.0) - noise_factor
-            description_energy = description_energy * weights
-        description_energy = tf.reduce_mean(description_energy)
-        return description_energy
-
     @tf.function
     def compute_loss(self, inputs) -> Dict[str, tf.Tensor]:
-        # region Inputs
-        batch_size = tf.shape(inputs)[0]
-        if self.use_noise:
-            noise_factor = tf.random.uniform([batch_size], maxval=1.0, seed=self.seed)
-            noise = tf.random.normal(tf.shape(inputs), stddev=self.noise_stddev, seed=self.seed)
-            noisy_inputs = inputs + noise * expand_dims_to_rank(noise_factor, inputs)
-
-            reconstruction_target = noisy_inputs if self.reconstruct_noise else inputs
-            inputs = noisy_inputs
-        else:
-            noise_factor = tf.zeros([batch_size], dtype=tf.float32)
-            reconstruction_target = inputs
-        # endregion
+        inputs, target, noise_factor = self.add_training_noise(inputs)
 
         # region Forward
         encoded = self.encoder(inputs)
         description_energy = self.description_energy_model(encoded)
         description_mask = self.get_description_mask(description_energy)
         encoded *= description_mask
-        outputs = self.decode(encoded)
+        outputs = self.decoder(encoded)
         # endregion
 
         # region Loss
-
-        reconstruction_loss = self.reconstruction_loss(reconstruction_target, outputs)
+        reconstruction_loss = self.reconstruction_loss(target, outputs)
         description_energy_loss = self.description_energy_loss(description_energy, noise_factor)
         loss = reconstruction_loss + self._description_energy_loss_lambda * description_energy_loss
         # endregion
@@ -191,6 +169,38 @@ class LED(AE):
         # endregion
 
         return metrics
+
+    # region Training noise
+    @tf.function
+    def add_training_noise(self, inputs) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+        batch_size = tf.shape(inputs)[0]
+        if self.use_noise:
+            noise_factor = tf.random.uniform([batch_size], maxval=1.0, seed=self.seed)
+            noise = tf.random.normal(tf.shape(inputs), stddev=self.noise_stddev, seed=self.seed)
+            noisy_inputs = inputs + noise * expand_dims_to_rank(noise_factor, inputs)
+
+            target = noisy_inputs if self.reconstruct_noise else inputs
+            inputs = noisy_inputs
+        else:
+            noise_factor = tf.zeros([batch_size], dtype=tf.float32)
+            target = inputs
+
+        return inputs, target, noise_factor
+
+    # endregion
+
+    @tf.function
+    def reconstruction_loss(self, inputs: tf.Tensor, outputs: tf.Tensor) -> tf.Tensor:
+        return tf.reduce_mean(tf.square(inputs - outputs))
+
+    @tf.function
+    def description_energy_loss(self, description_energy: tf.Tensor, noise_factor: tf.Tensor = 0.0) -> tf.Tensor:
+        description_energy = reduce_mean_from(description_energy, start_axis=1)
+        if self.use_noise and self.reconstruct_noise:
+            weights = tf.constant(1.0) - noise_factor
+            description_energy = description_energy * weights
+        description_energy = tf.reduce_mean(description_energy)
+        return description_energy
 
     # endregion
 
