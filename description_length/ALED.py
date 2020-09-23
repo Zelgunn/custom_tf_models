@@ -71,7 +71,7 @@ class ALED(LED):
         outputs = self.decode(real_encoded * description_mask)
 
         real_loss = self.description_energy_loss(real_description_energy)
-        fake_loss = - self.description_energy_loss(fake_description_energy)
+        fake_loss = tf.nn.relu(- self.description_energy_loss(fake_description_energy))
         description_energy_loss = (real_loss + fake_loss) * self.description_energy_loss_lambda
         # led_gradient_penalty = self.gradient_penalty(real_inputs, fake_inputs) * self._gradient_penalty_weight
         reconstruction_loss = self.reconstruction_loss(inputs, outputs)
@@ -105,10 +105,21 @@ class ALED(LED):
 
         description_length = tf.reduce_mean(tf.stop_gradient(description_mask))
 
+        generated_mean = tf.reduce_mean(fake_inputs)
+        generated_std = tf.math.reduce_std(fake_inputs)
+
+        mean_regularization = tf.abs(generated_mean)
+        std_regularization = tf.abs(1.0 - generated_std)
+        regularization = (mean_regularization + std_regularization)
+
+        loss += regularization * 1e-2
+
         metrics = {
             "generator/loss": loss,
             # "generator/reconstruction_loss": reconstruction_loss,
             "generator/description_energy": description_energy_loss,
+            "generator/mean": generated_mean,
+            "generator/std": generated_std,
             "generator/description_length": description_length,
         }
 
