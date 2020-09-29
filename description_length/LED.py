@@ -156,6 +156,9 @@ class LED(AE):
         reconstruction_loss = self.reconstruction_loss(target, outputs)
         description_energy_loss = self.description_energy_loss(description_energy, noise_factor)
         loss = reconstruction_loss + self._description_energy_loss_lambda * description_energy_loss
+
+        description_gradient_penalty = self.compute_description_gradient_penalty(inputs, noise_factor)
+        loss += description_gradient_penalty * self._description_energy_loss_lambda
         # endregion
 
         # region Metrics
@@ -166,10 +169,29 @@ class LED(AE):
             "reconstruction_loss": reconstruction_loss,
             "description_energy_loss": description_energy_loss,
             "description_length": description_length,
+            "description_gradient_penalty": description_gradient_penalty,
         }
         # endregion
 
         return metrics
+
+    @tf.function
+    def compute_description_gradient_penalty(self, inputs: tf.Tensor, noise_factor: tf.Tensor) -> tf.Tensor:
+        with tf.GradientTape() as tape:
+            encoded = self.encoder(inputs)
+            description_energy = self.description_energy_model(encoded)
+            description_energy_loss = self.description_energy_loss(description_energy, noise_factor)
+
+        trained_variables = self.encoder.trainable_variables + self.description_energy_model.trainable_variables
+        gradients = tape.gradient(description_energy_loss, trained_variables)
+
+        gradients = [tensor for tensor in gradients if tensor is not None]
+        gradient_penalty = tf.linalg.global_norm(gradients)
+        gradient_penalty = tf.nn.relu(gradient_penalty - 1.0)
+        # gradient_penalty = [tf.sqrt(tf.reduce_sum(tf.square(tensor))) for tensor in gradients]
+        # gradient_penalty = [tf.square(tf.nn.relu(tensor - tf.constant(1.0))) for tensor in gradient_penalty]
+        # gradient_penalty = tf.reduce_mean(gradient_penalty)
+        return gradient_penalty
 
     # region Training noise
     @tf.function
