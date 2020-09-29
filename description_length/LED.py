@@ -76,8 +76,9 @@ class LED(AE):
                              .format(valid_activations, descriptors_activation))
 
         kernel_size = 13  # Current field size : (13 - 1) * 5 + 1 = 61
+        kernel_initializer = VarianceScaling(seed=seed, scale=1.0)
         shared_params = {
-            "kernel_initializer": VarianceScaling(seed=seed, scale=1.0),
+            "kernel_initializer": kernel_initializer,
             "kernel_size": kernel_size,
             "padding": "causal",
             "activation": "relu",
@@ -90,7 +91,7 @@ class LED(AE):
         ]
         last_conv_layer = Conv1D(filters=1,
                                  activation=descriptors_activation,
-                                 kernel_initializer=tf.keras.initializers.Constant(1.0 / kernel_size),
+                                 kernel_initializer=kernel_initializer,
                                  kernel_size=kernel_size,
                                  padding="causal")
         conv_layers.append(last_conv_layer)
@@ -230,7 +231,36 @@ class LED(AE):
         energy = self.description_energy_model(encoded)
         return reduce_mean_from(energy, start_axis=1)
 
+    @tf.function
+    def compute_total_energy(self, inputs: tf.Tensor):
+        encoded = self.encoder(inputs)
+        description_energy = self.description_energy_model(encoded)
+        description_mask = self.get_description_mask(description_energy)
+        encoded *= description_mask
+        outputs = self.decoder(encoded)
+        reconstruction_error = tf.abs(inputs - outputs)
+
+        description_energy = reduce_mean_from(description_energy, start_axis=1)
+        reconstruction_error = reduce_mean_from(reconstruction_error, start_axis=1)
+        total_energy = description_energy + reconstruction_error
+        return total_energy
+
+    @tf.function
+    def compute_total_energy_x3(self, inputs: tf.Tensor):
+        encoded = self.encoder(inputs)
+        description_energy = self.description_energy_model(encoded)
+        description_mask = self.get_description_mask(description_energy)
+        encoded *= description_mask
+        outputs = self.decoder(encoded)
+        reconstruction_error = tf.abs(inputs - outputs)
+
+        description_energy = reduce_mean_from(description_energy, start_axis=1)
+        reconstruction_error = reduce_mean_from(reconstruction_error, start_axis=1) * tf.constant(3.0)
+        total_energy = description_energy + reconstruction_error
+        return total_energy
+
     @property
     def additional_test_metrics(self):
+        # return [self.compute_description_energy, self.compute_total_energy, self.compute_total_energy_x3]
         return [self.compute_description_energy]
     # endregion
