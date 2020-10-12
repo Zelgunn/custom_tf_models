@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow.python.keras.models import Model, Sequential
-from tensorflow.python.keras.layers import Conv1D, Reshape, TimeDistributed
+from tensorflow.python.keras.layers import Conv1D, Reshape, TimeDistributed, Activation
 from tensorflow.python.ops.init_ops import VarianceScaling
 import numpy as np
 from typing import Dict, Any, Tuple
@@ -9,6 +9,9 @@ from custom_tf_models.basic.AE import AE
 from CustomKerasLayers import TileLayer
 from misc_utils.math_utils import binarize, reduce_mean_from
 from misc_utils.general import expand_dims_to_rank
+
+
+# from transformers.transformer import TransformerEncoder
 
 
 # LED : Low Energy Descriptors
@@ -50,7 +53,14 @@ class LED(AE):
                                                            name="description_energy_loss_lambda")
 
         self.noise_factor_distribution = "normal"
-        self.noise_type = "sparse"
+        self.noise_type = "dense"
+
+        self.train_step_index = tf.Variable(initial_value=0, trainable=False, name="train_step_index", dtype=tf.int32)
+        self.rec_threshold_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=0.1,
+                                                                                     decay_steps=1000,
+                                                                                     decay_rate=0.6,
+                                                                                     staircase=False)
+        self.rec_threshold_offset = tf.constant(0.035, dtype=tf.float32, name="rec_threshold_offset")
 
     # region Make description model
     def _make_description_model(self):
@@ -88,6 +98,9 @@ class LED(AE):
             Conv1D(filters=16, **shared_params),
             Conv1D(filters=8, **shared_params),
             Conv1D(filters=4, **shared_params),
+            # TransformerEncoder(embedding_layer=None, layers_intermediate_size=16, layers_count=2,
+            #                    attention_heads_count=4, attention_key_size=4, attention_values_size=4,
+            #                    dropout_rate=0.0, return_attention=False, kernel_initializer=kernel_initializer),
         ]
         last_conv_layer = Conv1D(filters=1,
                                  activation=descriptors_activation,
@@ -154,33 +167,60 @@ class LED(AE):
 
         # region Loss
         reconstruction_loss = self.reconstruction_loss(target, outputs)
-        description_energy_loss = self.description_energy_loss(description_energy, noise_factor)
-        loss = reconstruction_loss + self._description_energy_loss_lambda * description_energy_loss
+        description_energy_loss = self.description_energy_loss(description_energy)
 
-        description_gradient_penalty = self.compute_description_gradient_penalty(inputs, noise_factor)
-        loss += description_gradient_penalty * self._description_energy_loss_lambda
+        reconstruction_goal = self.get_reconstruction_loss_goal()
+        description_energy_loss_weight = self.get_description_energy_loss_weight(reconstruction_loss)
+
+        loss = reconstruction_loss + description_energy_loss_weight * description_energy_loss
         # endregion
 
         # region Metrics
         description_length = tf.reduce_mean(tf.stop_gradient(description_mask))
+        reconstruction_goal_delta = reconstruction_loss - reconstruction_goal
 
         metrics = {
             "loss": loss,
-            "reconstruction_loss": reconstruction_loss,
-            "description_energy_loss": description_energy_loss,
-            "description_length": description_length,
-            "description_gradient_penalty": description_gradient_penalty,
+            "reconstruction/error": reconstruction_loss,
+            "reconstruction/goal": reconstruction_goal,
+            "reconstruction/goal_delta": reconstruction_goal_delta,
+            "description/energy": description_energy_loss,
+            "description/loss_weight": description_energy_loss_weight,
+            "description/length": description_length,
         }
         # endregion
 
         return metrics
 
+    def train_step(self, inputs) -> Dict[str, tf.Tensor]:
+        metrics = super(LED, self).train_step(inputs)
+        self.train_step_index.assign_add(1)
+        return metrics
+
+    # region Objectives weights
+
+    @tf.function
+    def get_reconstruction_loss_goal(self) -> tf.Tensor:
+        return self.rec_threshold_schedule(self.train_step_index) + self.rec_threshold_offset
+
+    @tf.function
+    def get_description_energy_loss_weight(self, reconstruction_loss) -> tf.Tensor:
+        goal = self.get_reconstruction_loss_goal()
+        reconstruction_loss = tf.stop_gradient(reconstruction_loss)
+        goal_weight = (goal - reconstruction_loss) / goal
+        goal_weight = tf.clip_by_value(goal_weight * 4.0, -1.0, 1.0)
+        # goal_weight = 1.0 - tf.minimum((reconstruction_loss - goal) / goal, 1.0)
+        return self._description_energy_loss_lambda * goal_weight
+
+    # endregion
+
+    # region Gradient penalty
     @tf.function
     def compute_description_gradient_penalty(self, inputs: tf.Tensor, noise_factor: tf.Tensor) -> tf.Tensor:
         with tf.GradientTape() as tape:
             encoded = self.encoder(inputs)
             description_energy = self.description_energy_model(encoded)
-            description_energy_loss = self.description_energy_loss(description_energy, noise_factor)
+            description_energy_loss = self.description_energy_loss(description_energy)
 
         trained_variables = self.encoder.trainable_variables + self.description_energy_model.trainable_variables
         gradients = tape.gradient(description_energy_loss, trained_variables)
@@ -192,6 +232,8 @@ class LED(AE):
         # gradient_penalty = [tf.square(tf.nn.relu(tensor - tf.constant(1.0))) for tensor in gradient_penalty]
         # gradient_penalty = tf.reduce_mean(gradient_penalty)
         return gradient_penalty
+
+    # endregion
 
     # region Training noise
     @tf.function
@@ -217,11 +259,7 @@ class LED(AE):
         return tf.reduce_mean(tf.square(inputs - outputs))
 
     @tf.function
-    def description_energy_loss(self, description_energy: tf.Tensor, noise_factor: tf.Tensor = 0.0) -> tf.Tensor:
-        description_energy = reduce_mean_from(description_energy, start_axis=1)
-        if self.use_noise and self.reconstruct_noise:
-            weights = tf.constant(1.0) - noise_factor
-            description_energy = description_energy * weights
+    def description_energy_loss(self, description_energy: tf.Tensor) -> tf.Tensor:
         description_energy = tf.reduce_mean(description_energy)
         return description_energy
 
@@ -241,6 +279,8 @@ class LED(AE):
             "use_noise": self.use_noise,
             "noise_stddev": self.noise_stddev,
             "reconstruct_noise": self.reconstruct_noise,
+            "rec_threshold_schedule": self.rec_threshold_schedule.get_config(),
+            "rec_threshold_offset": self.rec_threshold_offset.numpy(),
             "seed": self.seed,
         }
 
