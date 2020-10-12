@@ -13,6 +13,13 @@ from misc_utils.general import expand_dims_to_rank
 
 # from transformers.transformer import TransformerEncoder
 
+# TODO : Custom class for threshold (with type : constant, exp. decay, ...)
+# TODO : Experiment (HParam) - Constant threshold
+# TODO : Experiment (HParam) - Small model + Denoise mode
+# TODO : Experiment (Model) - Progressively lower energy - Soft
+# TODO : Experiment (Model) - Progressively lower energy - Hard (would enforce a mask like : [1] * n + [0] * (N-n) )
+# TODO : Experiment (Struct) - Replace conv. by square matrices in desc. model
+
 
 # LED : Low Energy Descriptors
 class LED(AE):
