@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow.python.keras.models import Model, Sequential
-from tensorflow.python.keras.layers import Conv1D, Reshape, TimeDistributed, Activation
+from tensorflow.python.keras.layers import Conv1D, Reshape, TimeDistributed
 from tensorflow.python.ops.init_ops import VarianceScaling
 import numpy as np
 from typing import Dict, Any, Tuple
@@ -11,14 +11,16 @@ from misc_utils.math_utils import binarize, reduce_mean_from
 from misc_utils.general import expand_dims_to_rank
 
 
-# from transformers.transformer import TransformerEncoder
-
-# TODO : Custom class for threshold (with type : constant, exp. decay, ...)
 # TODO : Experiment (HParam) - Constant threshold
 # TODO : Experiment (HParam) - Small model + Denoise mode
+# TODO : Experiment (HParam) - MAE for training (instead of MSE)
+# TODO : Experiment (HParam) - Min desc. loss weight = 0
 # TODO : Experiment (Model) - Progressively lower energy - Soft
 # TODO : Experiment (Model) - Progressively lower energy - Hard (would enforce a mask like : [1] * n + [0] * (N-n) )
 # TODO : Experiment (Struct) - Replace conv. by square matrices in desc. model
+# TODO : Experiment (Struct) - Replace conv. by residual conv.
+# TODO : Experiment (Method) - Pre-train autoencoder, freeze its weights and then train the description model
+# TODO : Experiment (Method) - Pre-train autoencoder, then train all model
 
 
 # LED : Low Energy Descriptors
@@ -54,7 +56,8 @@ class LED(AE):
 
         self.description_energy_model = self._make_description_model()
 
-        self._binarization_threshold = tf.constant(0.0, dtype=tf.float32, name="bin_threshold")
+        bin_threshold = self.descriptor_activations_map()[descriptors_activation]
+        self._binarization_threshold = tf.constant(bin_threshold, dtype=tf.float32, name="bin_threshold")
         self._binarization_temperature = tf.constant(binarization_temperature, dtype=tf.float32, name="bin_temperature")
         self._description_energy_loss_lambda = tf.constant(description_energy_loss_lambda, dtype=tf.float32,
                                                            name="description_energy_loss_lambda")
@@ -63,11 +66,7 @@ class LED(AE):
         self.noise_type = "dense"
 
         self.train_step_index = tf.Variable(initial_value=0, trainable=False, name="train_step_index", dtype=tf.int32)
-        self.rec_threshold_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=0.1,
-                                                                                     decay_steps=1000,
-                                                                                     decay_rate=0.6,
-                                                                                     staircase=False)
-        self.rec_threshold_offset = tf.constant(0.035, dtype=tf.float32, name="rec_threshold_offset")
+        self.goal_schedule = LEDGoal(offset=0.035, initial_rate=0.1, decay_steps=1000, decay_rate=0.6, staircase=False)
 
     # region Make description model
     def _make_description_model(self):
@@ -92,47 +91,48 @@ class LED(AE):
             raise ValueError("`output_activation` must be in ({}). Got {}."
                              .format(valid_activations, descriptors_activation))
 
+        # region Core
         kernel_size = 13  # Current field size : (13 - 1) * 5 + 1 = 61
-        kernel_initializer = VarianceScaling(seed=seed, scale=1.0)
+        kernel_initializer = VarianceScaling(seed=seed)
         shared_params = {
             "kernel_initializer": kernel_initializer,
             "kernel_size": kernel_size,
             "padding": "causal",
             "activation": "relu",
         }
-        conv_layers = [
+        layers = [
             Conv1D(filters=32, **shared_params),
-            Conv1D(filters=16, **shared_params),
-            Conv1D(filters=8, **shared_params),
-            Conv1D(filters=4, **shared_params),
-            # TransformerEncoder(embedding_layer=None, layers_intermediate_size=16, layers_count=2,
-            #                    attention_heads_count=4, attention_key_size=4, attention_values_size=4,
-            #                    dropout_rate=0.0, return_attention=False, kernel_initializer=kernel_initializer),
+            Conv1D(filters=32, **shared_params),
+            Conv1D(filters=32, **shared_params),
+            Conv1D(filters=32, **shared_params),
         ]
+
         last_conv_layer = Conv1D(filters=1,
                                  activation=descriptors_activation,
                                  kernel_initializer=kernel_initializer,
                                  kernel_size=kernel_size,
                                  padding="causal")
-        conv_layers.append(last_conv_layer)
+        layers.append(last_conv_layer)
+        # endregion
 
+        # region Reshape / Tile
         if merge_dims_with_features:
             target_input_shape = (block_count, features_per_block)
-            tiling_multiples = [1, features_per_block]
         else:
-            conv_layers = [TimeDistributed(layer) for layer in conv_layers]
+            layers = [TimeDistributed(layer) for layer in layers]
             dimensions_size = np.prod(latent_code_shape[:-1])
             target_input_shape = (dimensions_size, block_count, features_per_block)
-            tiling_multiples = [1, 1, features_per_block]
 
-        description_energy_model = Sequential(layers=[
-            Reshape(target_shape=target_input_shape, input_shape=latent_code_shape),
-            *conv_layers,
-            TileLayer(multiples=tiling_multiples),
-            Reshape(target_shape=latent_code_shape)
-        ], name=name)
+        if features_per_block != 1:
+            tiling_multiples = [1, features_per_block] if merge_dims_with_features else [1, 1, features_per_block]
+            layers.append(TileLayer(tiling_multiples))
 
-        return description_energy_model
+        input_reshape = Reshape(target_shape=target_input_shape, input_shape=latent_code_shape)
+        output_reshape = Reshape(target_shape=latent_code_shape)
+        layers = [input_reshape, *layers, output_reshape]
+        # endregion
+
+        return Sequential(layers=layers, name=name)
 
     @staticmethod
     def descriptor_activations_map() -> Dict[str, float]:
@@ -176,7 +176,7 @@ class LED(AE):
         reconstruction_loss = self.reconstruction_loss(target, outputs)
         description_energy_loss = self.description_energy_loss(description_energy)
 
-        reconstruction_goal = self.get_reconstruction_loss_goal()
+        reconstruction_goal = self.goal_schedule(self.train_step_index)
         description_energy_loss_weight = self.get_description_energy_loss_weight(reconstruction_loss)
 
         loss = reconstruction_loss + description_energy_loss_weight * description_energy_loss
@@ -186,6 +186,12 @@ class LED(AE):
         description_length = tf.reduce_mean(tf.stop_gradient(description_mask))
         reconstruction_goal_delta = reconstruction_loss - reconstruction_goal
 
+        description_energy_left = description_energy[..., :-1]
+        description_energy_right = description_energy[..., 1:]
+        description_activation_order = description_energy_right - description_energy_left
+        description_activation_order = tf.nn.relu(description_activation_order)
+        description_activation_order = tf.reduce_mean(description_activation_order)
+
         metrics = {
             "loss": loss,
             "reconstruction/error": reconstruction_loss,
@@ -194,6 +200,7 @@ class LED(AE):
             "description/energy": description_energy_loss,
             "description/loss_weight": description_energy_loss_weight,
             "description/length": description_length,
+            "description/activation_order": description_activation_order,
         }
         # endregion
 
@@ -205,40 +212,14 @@ class LED(AE):
         return metrics
 
     # region Objectives weights
-
-    @tf.function
-    def get_reconstruction_loss_goal(self) -> tf.Tensor:
-        return self.rec_threshold_schedule(self.train_step_index) + self.rec_threshold_offset
-
     @tf.function
     def get_description_energy_loss_weight(self, reconstruction_loss) -> tf.Tensor:
-        goal = self.get_reconstruction_loss_goal()
+        goal = self.goal_schedule(self.train_step_index)
         reconstruction_loss = tf.stop_gradient(reconstruction_loss)
         goal_weight = (goal - reconstruction_loss) / goal
         goal_weight = tf.clip_by_value(goal_weight * 4.0, -1.0, 1.0)
         # goal_weight = 1.0 - tf.minimum((reconstruction_loss - goal) / goal, 1.0)
         return self._description_energy_loss_lambda * goal_weight
-
-    # endregion
-
-    # region Gradient penalty
-    @tf.function
-    def compute_description_gradient_penalty(self, inputs: tf.Tensor, noise_factor: tf.Tensor) -> tf.Tensor:
-        with tf.GradientTape() as tape:
-            encoded = self.encoder(inputs)
-            description_energy = self.description_energy_model(encoded)
-            description_energy_loss = self.description_energy_loss(description_energy)
-
-        trained_variables = self.encoder.trainable_variables + self.description_energy_model.trainable_variables
-        gradients = tape.gradient(description_energy_loss, trained_variables)
-
-        gradients = [tensor for tensor in gradients if tensor is not None]
-        gradient_penalty = tf.linalg.global_norm(gradients)
-        gradient_penalty = tf.nn.relu(gradient_penalty - 1.0)
-        # gradient_penalty = [tf.sqrt(tf.reduce_sum(tf.square(tensor))) for tensor in gradients]
-        # gradient_penalty = [tf.square(tf.nn.relu(tensor - tf.constant(1.0))) for tensor in gradient_penalty]
-        # gradient_penalty = tf.reduce_mean(gradient_penalty)
-        return gradient_penalty
 
     # endregion
 
@@ -267,8 +248,7 @@ class LED(AE):
 
     @tf.function
     def description_energy_loss(self, description_energy: tf.Tensor) -> tf.Tensor:
-        description_energy = tf.reduce_mean(description_energy)
-        return description_energy
+        return tf.reduce_mean(description_energy)
 
     # endregion
 
@@ -286,8 +266,7 @@ class LED(AE):
             "use_noise": self.use_noise,
             "noise_stddev": self.noise_stddev,
             "reconstruct_noise": self.reconstruct_noise,
-            "rec_threshold_schedule": self.rec_threshold_schedule.get_config(),
-            "rec_threshold_offset": self.rec_threshold_offset.numpy(),
+            "goal": self.goal_schedule.get_config(),
             "seed": self.seed,
         }
 
@@ -333,3 +312,43 @@ class LED(AE):
         # return [self.compute_description_energy, self.compute_total_energy, self.compute_total_energy_x3]
         return [self.compute_description_energy]
     # endregion
+
+
+class LEDGoal(object):
+    def __init__(self,
+                 initial_rate: float,
+                 decay_steps: int,
+                 decay_rate: float,
+                 staircase: bool,
+                 offset: float):
+        self.initial_rate = initial_rate
+        self.decay_steps = decay_steps
+        self.decay_rate = decay_rate
+        self.staircase = staircase
+        self.offset = offset
+
+    def __call__(self, step) -> tf.Tensor:
+        return self.call(step)
+
+    @tf.function
+    def call(self, step: tf.Tensor) -> tf.Tensor:
+        decay_steps = tf.cast(self.decay_steps, tf.float32)
+        step = tf.cast(step, tf.float32)
+        step = step / decay_steps
+
+        if self.staircase:
+            step = tf.math.floor(step)
+
+        decay = tf.pow(self.decay_rate, step)
+        goal = self.offset + decay * self.initial_rate
+        return goal
+
+    def get_config(self):
+        return {
+            "initial_rate": self.initial_rate,
+            "decay_steps": self.decay_steps,
+            "decay_rate": self.decay_rate,
+            "staircase": self.staircase,
+            "offset": self.offset,
+            "version": "positive range init, soft order",
+        }
