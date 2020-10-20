@@ -7,6 +7,7 @@ from typing import Dict, Any, Tuple
 
 from custom_tf_models.basic.AE import AE
 from CustomKerasLayers import TileLayer
+from CustomKerasLayers.layers.DenseSelfAttention import DenseSelfAttention
 from misc_utils.math_utils import binarize, reduce_mean_from
 from misc_utils.general import expand_dims_to_rank
 
@@ -67,6 +68,7 @@ class LED(AE):
 
         self.train_step_index = tf.Variable(initial_value=0, trainable=False, name="train_step_index", dtype=tf.int32)
         self.goal_schedule = LEDGoal(offset=0.035, initial_rate=0.1, decay_steps=1000, decay_rate=0.6, staircase=False)
+        # self.goal_schedule = None
 
     # region Make description model
     def _make_description_model(self):
@@ -92,6 +94,7 @@ class LED(AE):
                              .format(valid_activations, descriptors_activation))
 
         # region Core
+
         kernel_size = 13  # Current field size : (13 - 1) * 5 + 1 = 61
         kernel_initializer = VarianceScaling(seed=seed)
         shared_params = {
@@ -105,14 +108,25 @@ class LED(AE):
             Conv1D(filters=32, **shared_params),
             Conv1D(filters=32, **shared_params),
             Conv1D(filters=32, **shared_params),
+            Conv1D(filters=1, activation=descriptors_activation, kernel_initializer=kernel_initializer,
+                   kernel_size=kernel_size, padding="causal", name="DescriptionModuleOutput")
         ]
 
-        last_conv_layer = Conv1D(filters=1,
-                                 activation=descriptors_activation,
-                                 kernel_initializer=kernel_initializer,
-                                 kernel_size=kernel_size,
-                                 padding="causal")
-        layers.append(last_conv_layer)
+        # shared_params = {
+        #     "head_count": 4,
+        #     "head_size": 8,
+        #     "use_mask": True,
+        #     "seed": seed,
+        # }
+        # default_core_activation = "relu"
+        # layers = [
+        #     DenseSelfAttention(output_size=32, activation=default_core_activation, **shared_params),
+        #     DenseSelfAttention(output_size=32, activation=default_core_activation, **shared_params),
+        #     DenseSelfAttention(output_size=32, activation=default_core_activation, **shared_params),
+        #     DenseSelfAttention(output_size=32, activation=default_core_activation, **shared_params),
+        #     DenseSelfAttention(output_size=1, activation=descriptors_activation, name="DescriptionModuleOutput",
+        #                        **shared_params),
+        # ]
         # endregion
 
         # region Reshape / Tile
@@ -176,7 +190,6 @@ class LED(AE):
         reconstruction_loss = self.reconstruction_loss(target, outputs)
         description_energy_loss = self.description_energy_loss(description_energy)
 
-        reconstruction_goal = self.goal_schedule(self.train_step_index)
         description_energy_loss_weight = self.get_description_energy_loss_weight(reconstruction_loss)
 
         loss = reconstruction_loss + description_energy_loss_weight * description_energy_loss
@@ -184,7 +197,12 @@ class LED(AE):
 
         # region Metrics
         description_length = tf.reduce_mean(tf.stop_gradient(description_mask))
-        reconstruction_goal_delta = reconstruction_loss - reconstruction_goal
+        if self.goal_schedule is not None:
+            reconstruction_goal = self.goal_schedule(self.train_step_index)
+            reconstruction_goal_delta = reconstruction_loss - reconstruction_goal
+        else:
+            reconstruction_goal = 0.0
+            reconstruction_goal_delta = 0.0
 
         description_energy_left = description_energy[..., :-1]
         description_energy_right = description_energy[..., 1:]
@@ -214,10 +232,14 @@ class LED(AE):
     # region Objectives weights
     @tf.function
     def get_description_energy_loss_weight(self, reconstruction_loss) -> tf.Tensor:
+        if self.goal_schedule is None:
+            return self._description_energy_loss_lambda
+
         goal = self.goal_schedule(self.train_step_index)
         reconstruction_loss = tf.stop_gradient(reconstruction_loss)
         goal_weight = (goal - reconstruction_loss) / goal
-        goal_weight = tf.clip_by_value(goal_weight * 4.0, -1.0, 1.0)
+        goal_weight = tf.clip_by_value(goal_weight * 4.0, 0.0, 1.0)
+        # goal_weight = tf.clip_by_value(goal_weight * 4.0, -1.0, 1.0)
         # goal_weight = 1.0 - tf.minimum((reconstruction_loss - goal) / goal, 1.0)
         return self._description_energy_loss_lambda * goal_weight
 
@@ -266,7 +288,7 @@ class LED(AE):
             "use_noise": self.use_noise,
             "noise_stddev": self.noise_stddev,
             "reconstruct_noise": self.reconstruct_noise,
-            "goal": self.goal_schedule.get_config(),
+            "goal": self.goal_schedule.get_config() if self.goal_schedule is not None else None,
             "seed": self.seed,
         }
 
