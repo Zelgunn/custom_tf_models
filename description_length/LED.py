@@ -23,6 +23,44 @@ from misc_utils.general import expand_dims_to_rank
 # TODO : Experiment (Method) - Pre-train autoencoder, freeze its weights and then train the description model
 # TODO : Experiment (Method) - Pre-train autoencoder, then train all model
 
+class LEDGoal(object):
+    def __init__(self,
+                 initial_rate: float,
+                 decay_steps: int,
+                 decay_rate: float,
+                 staircase: bool,
+                 offset: float):
+        self.initial_rate = initial_rate
+        self.decay_steps = decay_steps
+        self.decay_rate = decay_rate
+        self.staircase = staircase
+        self.offset = offset
+
+    def __call__(self, step) -> tf.Tensor:
+        return self.call(step)
+
+    @tf.function
+    def call(self, step: tf.Tensor) -> tf.Tensor:
+        decay_steps = tf.cast(self.decay_steps, tf.float32)
+        step = tf.cast(step, tf.float32)
+        step = step / decay_steps
+
+        if self.staircase:
+            step = tf.math.floor(step)
+
+        decay = tf.pow(self.decay_rate, step)
+        goal = self.offset + decay * self.initial_rate
+        return goal
+
+    def get_config(self):
+        return {
+            "initial_rate": self.initial_rate,
+            "decay_steps": self.decay_steps,
+            "decay_rate": self.decay_rate,
+            "staircase": self.staircase,
+            "offset": self.offset
+        }
+
 
 # LED : Low Energy Descriptors
 class LED(AE):
@@ -38,6 +76,10 @@ class LED(AE):
                  use_noise=True,
                  noise_stddev=0.1,
                  reconstruct_noise=False,
+                 goal_schedule: LEDGoal = None,
+                 allow_negative_description_loss_weight=True,
+                 goal_delta_factor=4.0,
+                 unmasked_reconstruction_weight=0.0,
                  **kwargs
                  ):
         super(LED, self).__init__(encoder=encoder,
@@ -46,27 +88,43 @@ class LED(AE):
         self.features_per_block = features_per_block
         self.merge_dims_with_features = merge_dims_with_features
         self.descriptors_activation = descriptors_activation
-        self.binarization_temperature = binarization_temperature
-        self.add_binarization_noise_to_mask = add_binarization_noise_to_mask
         self.description_energy_loss_lambda = description_energy_loss_lambda
+
+        # region Input noise parameters
         self.use_noise = use_noise
         self.noise_stddev = noise_stddev
         self.reconstruct_noise = reconstruct_noise
 
-        self.description_energy_model = self._make_description_model()
+        self.noise_factor_distribution = "normal"
+        self.noise_type = "dense"
+        # endregion
+
+        # region Binarization parameters
+        self.binarization_temperature = binarization_temperature
+        self.add_binarization_noise_to_mask = add_binarization_noise_to_mask
 
         bin_threshold = self.descriptor_activations_map()[descriptors_activation]
         self._binarization_threshold = tf.constant(bin_threshold, dtype=tf.float32, name="bin_threshold")
         self._binarization_temperature = tf.constant(binarization_temperature, dtype=tf.float32, name="bin_temperature")
         self._description_energy_loss_lambda = tf.constant(description_energy_loss_lambda, dtype=tf.float32,
                                                            name="description_energy_loss_lambda")
+        # endregion
 
-        self.noise_factor_distribution = "normal"
-        self.noise_type = "dense"
+        self.description_energy_model = self._make_description_model()
 
+        # region Goal schedule
+        if goal_schedule is None:
+            goal_schedule = LEDGoal(offset=0.035, initial_rate=0.1, decay_steps=1000, decay_rate=0.6, staircase=False)
+        self.goal_schedule = goal_schedule
         self.train_step_index = tf.Variable(initial_value=0, trainable=False, name="train_step_index", dtype=tf.int32)
-        self.goal_schedule = LEDGoal(offset=0.035, initial_rate=0.1, decay_steps=1000, decay_rate=0.6, staircase=False)
-        # self.goal_schedule = None
+
+        self.allow_negative_description_loss_weight = allow_negative_description_loss_weight
+        self.goal_delta_factor = goal_delta_factor
+        # endregion
+
+        self.unmasked_reconstruction_weight = unmasked_reconstruction_weight
+        self._unmasked_reconstruction_weight = tf.constant(unmasked_reconstruction_weight, dtype=tf.float32,
+                                                           name="unmasked_reconstruction_weight")
 
     # region Make description model
     def _make_description_model(self):
@@ -177,43 +235,47 @@ class LED(AE):
         encoded = self.encoder(inputs)
         description_energy = self.description_energy_model(encoded)
         description_mask = self.get_description_mask(description_energy)
-        encoded *= description_mask
-        outputs = self.decoder(encoded)
+        outputs = self.decoder(encoded * description_mask)
         # endregion
 
         # region Loss
         reconstruction_loss = self.reconstruction_loss(target, outputs)
         description_energy_loss = self.description_energy_loss(description_energy)
-
         description_energy_loss_weight = self.get_description_energy_loss_weight(reconstruction_loss)
-
         loss = reconstruction_loss + description_energy_loss_weight * description_energy_loss
+
+        if self.perform_unmasked_reconstruction:
+            unmasked_outputs = self.decoder(encoded)
+            unmasked_reconstruction_error = self.reconstruction_loss(target, unmasked_outputs)
+            loss += unmasked_reconstruction_error * self._unmasked_reconstruction_weight
+        else:
+            unmasked_reconstruction_error = None
+
         # endregion
 
         # region Metrics
-        description_length = tf.reduce_mean(tf.stop_gradient(description_mask))
-        if self.goal_schedule is not None:
-            reconstruction_goal = self.goal_schedule(self.train_step_index)
-            reconstruction_goal_delta = reconstruction_loss - reconstruction_goal
-        else:
-            reconstruction_goal = 0.0
-            reconstruction_goal_delta = 0.0
+        reconstruction_metrics = {"reconstruction/error": reconstruction_loss}
 
-        # description_energy_left = description_energy[..., :-1]
-        # description_energy_right = description_energy[..., 1:]
-        # description_activation_order = description_energy_right - description_energy_left
-        # description_activation_order = tf.nn.relu(description_activation_order)
-        # description_activation_order = tf.reduce_mean(description_activation_order)
+        reconstruction_goal = self.goal_schedule(self.train_step_index)
+        reconstruction_goal_delta = reconstruction_loss - reconstruction_goal
+        if self.goal_schedule is not None:
+            reconstruction_metrics["reconstruction/goal"] = reconstruction_goal
+            reconstruction_metrics["reconstruction/goal_delta"] = reconstruction_goal_delta
+
+        if self.perform_unmasked_reconstruction:
+            reconstruction_metrics["reconstruction/unmasked_error"] = unmasked_reconstruction_error
+
+        description_length = tf.reduce_mean(description_mask)
+        description_metrics = {
+            "description/energy": description_energy_loss,
+            "description/loss_weight": description_energy_loss_weight,
+            "description/length": description_length
+        }
 
         metrics = {
             "loss": loss,
-            "reconstruction/error": reconstruction_loss,
-            "reconstruction/goal": reconstruction_goal,
-            "reconstruction/goal_delta": reconstruction_goal_delta,
-            "description/energy": description_energy_loss,
-            "description/loss_weight": description_energy_loss_weight,
-            "description/length": description_length,
-            # "description/activation_order": description_activation_order,
+            **reconstruction_metrics,
+            **description_metrics,
         }
         # endregion
 
@@ -232,11 +294,10 @@ class LED(AE):
             return self._description_energy_loss_lambda
 
         goal = self.goal_schedule(self.train_step_index)
-        reconstruction_loss = tf.stop_gradient(reconstruction_loss)
-        goal_weight = (goal - reconstruction_loss) / goal
-        # goal_weight = tf.clip_by_value(goal_weight * 4.0, 0.0, 1.0)
-        goal_weight = tf.clip_by_value(goal_weight * 4.0, -1.0, 1.0)
-        # goal_weight = 1.0 - tf.minimum((reconstruction_loss - goal) / goal, 1.0)
+        goal_weight = (goal - tf.stop_gradient(reconstruction_loss)) / goal
+        min_weight = -1.0 if self.allow_negative_description_loss_weight else 0.0
+        goal_weight = tf.clip_by_value(goal_weight * self.goal_delta_factor, min_weight, 1.0)
+
         return self._description_energy_loss_lambda * goal_weight
 
     # endregion
@@ -285,6 +346,9 @@ class LED(AE):
             "noise_stddev": self.noise_stddev,
             "reconstruct_noise": self.reconstruct_noise,
             "goal": self.goal_schedule.get_config() if self.goal_schedule is not None else None,
+            "allow_negative_description_loss_weight": self.allow_negative_description_loss_weight,
+            "goal_delta_factor": self.goal_delta_factor,
+            "unmasked_reconstruction_weight": self.unmasked_reconstruction_weight,
         }
 
     # endregion
@@ -327,43 +391,9 @@ class LED(AE):
     @property
     def additional_test_metrics(self):
         return [self.compute_description_energy]
+
     # endregion
 
-
-class LEDGoal(object):
-    def __init__(self,
-                 initial_rate: float,
-                 decay_steps: int,
-                 decay_rate: float,
-                 staircase: bool,
-                 offset: float):
-        self.initial_rate = initial_rate
-        self.decay_steps = decay_steps
-        self.decay_rate = decay_rate
-        self.staircase = staircase
-        self.offset = offset
-
-    def __call__(self, step) -> tf.Tensor:
-        return self.call(step)
-
-    @tf.function
-    def call(self, step: tf.Tensor) -> tf.Tensor:
-        decay_steps = tf.cast(self.decay_steps, tf.float32)
-        step = tf.cast(step, tf.float32)
-        step = step / decay_steps
-
-        if self.staircase:
-            step = tf.math.floor(step)
-
-        decay = tf.pow(self.decay_rate, step)
-        goal = self.offset + decay * self.initial_rate
-        return goal
-
-    def get_config(self):
-        return {
-            "initial_rate": self.initial_rate,
-            "decay_steps": self.decay_steps,
-            "decay_rate": self.decay_rate,
-            "staircase": self.staircase,
-            "offset": self.offset
-        }
+    @property
+    def perform_unmasked_reconstruction(self) -> bool:
+        return self.unmasked_reconstruction_weight > 0.0
