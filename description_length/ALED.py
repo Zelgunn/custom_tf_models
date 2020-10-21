@@ -13,7 +13,6 @@ class ALED(LED):
                  encoder: Model,
                  decoder: Model,
                  generator: Model,
-                 # generator_learning_rate: LearningRateType,
                  features_per_block: int,
                  merge_dims_with_features=False,
                  descriptors_activation="tanh",
@@ -21,7 +20,6 @@ class ALED(LED):
                  add_binarization_noise_to_mask=True,
                  description_energy_loss_lambda=1e-2,
                  gradient_penalty_weight=1e+0,
-                 seed=None,
                  **kwargs
                  ):
         super(ALED, self).__init__(encoder=encoder,
@@ -33,7 +31,6 @@ class ALED(LED):
                                    add_binarization_noise_to_mask=add_binarization_noise_to_mask,
                                    description_energy_loss_lambda=description_energy_loss_lambda,
                                    use_noise=False,
-                                   seed=seed,
                                    **kwargs)
 
         self.generator = generator
@@ -51,7 +48,7 @@ class ALED(LED):
 
     @tf.function
     def gradient_penalty(self, real_inputs, fake_inputs):
-        led_gradient_penalty = gradient_penalty(real=real_inputs, fake=fake_inputs, seed=self.seed,
+        led_gradient_penalty = gradient_penalty(real=real_inputs, fake=fake_inputs,
                                                 discriminator=self.compute_description_energy)
         return led_gradient_penalty
 

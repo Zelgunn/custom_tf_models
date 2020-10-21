@@ -4,8 +4,8 @@ from custom_tf_models.energy_based import ApplyOnRandomInput
 
 
 class FlipRandomSequence(ApplyOnRandomInput):
-    def __init__(self, seed):
-        super(FlipRandomSequence, self).__init__(is_low_energy=False, seed=seed)
+    def __init__(self):
+        super(FlipRandomSequence, self).__init__(is_low_energy=False)
 
     def apply_on_one(self, input_tensor):
         return tf.reverse(input_tensor, axis=(1,))

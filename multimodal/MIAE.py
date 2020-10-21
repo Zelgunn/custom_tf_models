@@ -8,13 +8,6 @@ from utils import split_steps
 
 
 class MIAE(MMAE):
-    def __init__(self,
-                 autoencoders: List[IAE],
-                 seed=None,
-                 **kwargs):
-        super(MIAE, self).__init__(autoencoders=autoencoders, **kwargs)
-        self.seed = seed
-
     @tf.function
     def compute_loss(self,
                      inputs
@@ -22,7 +15,7 @@ class MIAE(MMAE):
         split_inputs, _, unmerged_shapes = self.split_inputs(inputs, merge_batch_and_steps=False)
 
         step_count = unmerged_shapes[0][1]
-        offset = tf.random.uniform(shape=[], minval=0, maxval=step_count, dtype=tf.int32, seed=self.seed)
+        offset = tf.random.uniform(shape=[], minval=0, maxval=step_count, dtype=tf.int32)
 
         original_latent_codes = []
         interpolated_latent_codes = []

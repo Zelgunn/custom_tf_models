@@ -17,12 +17,10 @@ class IAEGAN(IAE):
                  discriminator_optimizer: OptimizerV2,
                  reconstruction_loss_weight=1e3,
                  wgan=True,
-                 seed=None,
                  ):
         super(IAEGAN, self).__init__(encoder=encoder,
                                      decoder=decoder,
-                                     step_size=step_size,
-                                     seed=seed)
+                                     step_size=step_size)
         self.discriminator = discriminator
         self.discriminator.optimizer = discriminator_optimizer
         self.reconstruction_loss_weight = reconstruction_loss_weight
@@ -92,7 +90,7 @@ class IAEGAN(IAE):
 
         # region Reconstruction Loss
         max_offset = step_count - self.step_size
-        offset = tf.random.uniform(shape=[], minval=0, maxval=max_offset + 1, dtype=tf.int32, seed=self.seed)
+        offset = tf.random.uniform(shape=[], minval=0, maxval=max_offset + 1, dtype=tf.int32)
         step = inputs[:, offset:offset + self.step_size]
 
         factor = tf.cast(offset / max_offset, tf.float32)
@@ -108,7 +106,7 @@ class IAEGAN(IAE):
         # endregion
 
         # region Adversarial Loss
-        factor = tf.random.uniform(shape=[], minval=-0.5, maxval=1.5, dtype=tf.float32, seed=self.seed)
+        factor = tf.random.uniform(shape=[], minval=-0.5, maxval=1.5, dtype=tf.float32)
         latent_code = lerp(start_encoded, end_encoded, factor)
         generated = self.decode(latent_code)
 
@@ -139,7 +137,7 @@ class IAEGAN(IAE):
 
     @tf.function
     def gradient_penalty(self, real, fake) -> tf.Tensor:
-        return gradient_penalty(real=real, fake=fake, discriminator=self.discriminator, seed=self.seed)
+        return gradient_penalty(real=real, fake=fake, discriminator=self.discriminator)
 
     # region select_two_latent_codes (from interpolated latent code)
     @tf.function
@@ -168,9 +166,8 @@ class IAEGAN(IAE):
         batch_range = tf.reshape(batch_range, [batch_size, 1, 1])
         batch_range = tf.tile(batch_range, [1, 2, 1])
 
-        first_indices = tf.random.uniform([batch_size], minval=1, maxval=step_count - 1, dtype=tf.int32, seed=self.seed)
-        second_indices = tf.random.uniform([batch_size], minval=1, maxval=step_count - 1,
-                                           dtype=tf.int32, seed=self.seed)
+        first_indices = tf.random.uniform([batch_size], minval=1, maxval=step_count - 1, dtype=tf.int32)
+        second_indices = tf.random.uniform([batch_size], minval=1, maxval=step_count - 1, dtype=tf.int32)
         second_indices = self.select_next_if_same(first_indices, second_indices, step_count)
 
         indices = tf.stack([first_indices, second_indices], axis=-1)
@@ -228,6 +225,5 @@ class IAEGAN(IAE):
             **base_config,
             "reconstruction_loss_weight": self.reconstruction_loss_weight,
             "wgan": self.wgan,
-            "seed": self.seed,
         }
         return config

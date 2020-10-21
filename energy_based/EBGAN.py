@@ -13,7 +13,6 @@ class EBGAN(Model):
                  margin: float,
                  generator_learning_rate=1e-3,
                  discriminator_learning_rate=1e-3,
-                 seed=None,
                  ):
         super(EBGAN, self).__init__()
 
@@ -22,7 +21,6 @@ class EBGAN(Model):
         self.margin = margin
         self.generator_learning_rate = generator_learning_rate
         self.discriminator_learning_rate = discriminator_learning_rate
-        self.seed = seed
 
         self.autoencoder.set_optimizer(tf.keras.optimizers.Adam(self.generator_learning_rate))
         self.generator.optimizer = tf.keras.optimizers.Adam(self.discriminator_learning_rate)
@@ -80,7 +78,7 @@ class EBGAN(Model):
     def generate(self, batch_size: Union[int, tf.Tensor]) -> tf.Tensor:
         code_shape = self.generator.input_shape[1:]
         code_shape = [batch_size, *code_shape]
-        code = tf.random.normal(shape=code_shape, mean=0.0, stddev=1.0, seed=self.seed)
+        code = tf.random.normal(shape=code_shape, mean=0.0, stddev=1.0)
         generated = self.generator(code)
         return generated
 
@@ -98,6 +96,5 @@ class EBGAN(Model):
             "margin": self.margin,
             "autoencoder_learning_rate": self.discriminator_learning_rate,
             "generator_learning_rate": self.generator_learning_rate,
-            "seed": self.seed,
         }
         return config

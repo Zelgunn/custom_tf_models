@@ -7,14 +7,12 @@ from custom_tf_models.energy_based import EnergyStateFunction
 class ApplyOnRandomInput(EnergyStateFunction):
     def __init__(self,
                  is_low_energy: bool,
-                 seed,
                  ):
         super(ApplyOnRandomInput, self).__init__(is_low_energy=is_low_energy)
-        self.seed = seed
 
     def call(self, inputs):
         outputs = []
-        index = tf.random.uniform(shape=[], minval=0, maxval=len(inputs), dtype=tf.int32, seed=self.seed)
+        index = tf.random.uniform(shape=[], minval=0, maxval=len(inputs), dtype=tf.int32)
         for i in range(len(inputs)):
             x = inputs[i]
             if i == index:

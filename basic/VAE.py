@@ -12,13 +12,11 @@ class VAE(AE):
                  encoder: Model,
                  decoder: Model,
                  kl_divergence_loss_factor=1e-2,
-                 seed=None,
                  **kwargs):
         super(VAE, self).__init__(encoder=encoder,
                                   decoder=decoder,
                                   **kwargs)
         self.kl_divergence_loss_factor = kl_divergence_loss_factor
-        self.seed = seed
 
     @tf.function
     def encode(self, inputs):
@@ -54,7 +52,6 @@ class VAE(AE):
         return {
             **super(VAE, self).get_config(),
             "kl_divergence_factor": self.kl_divergence_loss_factor,
-            "seed": self.seed,
         }
 
 

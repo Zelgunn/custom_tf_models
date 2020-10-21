@@ -7,7 +7,7 @@ from typing import Dict, Any, Tuple
 
 from custom_tf_models.basic.AE import AE
 from CustomKerasLayers import TileLayer
-from CustomKerasLayers.layers.DenseSelfAttention import DenseSelfAttention
+# from CustomKerasLayers.layers.DenseSelfAttention import DenseSelfAttention
 from misc_utils.math_utils import binarize, reduce_mean_from
 from misc_utils.general import expand_dims_to_rank
 
@@ -38,7 +38,6 @@ class LED(AE):
                  use_noise=True,
                  noise_stddev=0.1,
                  reconstruct_noise=False,
-                 seed=None,
                  **kwargs
                  ):
         super(LED, self).__init__(encoder=encoder,
@@ -53,7 +52,6 @@ class LED(AE):
         self.use_noise = use_noise
         self.noise_stddev = noise_stddev
         self.reconstruct_noise = reconstruct_noise
-        self.seed = seed
 
         self.description_energy_model = self._make_description_model()
 
@@ -75,16 +73,14 @@ class LED(AE):
         return self.make_description_model(latent_code_shape=self.encoder.output_shape[1:],
                                            features_per_block=self.features_per_block,
                                            merge_dims_with_features=self.merge_dims_with_features,
-                                           descriptors_activation=self.descriptors_activation,
-                                           seed=self.seed)
+                                           descriptors_activation=self.descriptors_activation)
 
     @staticmethod
     def make_description_model(latent_code_shape,
                                features_per_block: int,
                                merge_dims_with_features: bool,
                                descriptors_activation: str,
-                               name="DescriptionEnergyModel",
-                               seed=None):
+                               name="DescriptionEnergyModel"):
         features_dims = latent_code_shape if merge_dims_with_features else latent_code_shape[-1:]
         block_count = np.prod(features_dims) // features_per_block
 
@@ -96,7 +92,7 @@ class LED(AE):
         # region Core
 
         kernel_size = 13  # Current field size : (13 - 1) * 5 + 1 = 61
-        kernel_initializer = VarianceScaling(seed=seed)
+        kernel_initializer = VarianceScaling()
         shared_params = {
             "kernel_initializer": kernel_initializer,
             "kernel_size": kernel_size,
@@ -116,7 +112,6 @@ class LED(AE):
         #     "head_count": 4,
         #     "head_size": 8,
         #     "use_mask": True,
-        #     "seed": seed,
         # }
         # default_core_activation = "relu"
         # layers = [
@@ -210,6 +205,8 @@ class LED(AE):
         # description_activation_order = tf.nn.relu(description_activation_order)
         # description_activation_order = tf.reduce_mean(description_activation_order)
 
+        tf.print(self.train_step_index, description_length)
+
         metrics = {
             "loss": loss,
             "reconstruction/error": reconstruction_loss,
@@ -227,6 +224,7 @@ class LED(AE):
     def train_step(self, inputs) -> Dict[str, tf.Tensor]:
         metrics = super(LED, self).train_step(inputs)
         self.train_step_index.assign_add(1)
+        self._train_counter.assign(tf.cast(self.train_step_index, tf.int64))
         return metrics
 
     # region Objectives weights
@@ -250,8 +248,8 @@ class LED(AE):
     def add_training_noise(self, inputs) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         batch_size = tf.shape(inputs)[0]
         if self.use_noise:
-            noise_factor = tf.random.uniform([batch_size], maxval=1.0, seed=self.seed)
-            noise = tf.random.normal(tf.shape(inputs), stddev=self.noise_stddev, seed=self.seed)
+            noise_factor = tf.random.uniform([batch_size], maxval=1.0)
+            noise = tf.random.normal(tf.shape(inputs), stddev=self.noise_stddev)
             noisy_inputs = inputs + noise * expand_dims_to_rank(noise_factor, inputs)
 
             target = noisy_inputs if self.reconstruct_noise else inputs
@@ -289,7 +287,6 @@ class LED(AE):
             "noise_stddev": self.noise_stddev,
             "reconstruct_noise": self.reconstruct_noise,
             "goal": self.goal_schedule.get_config() if self.goal_schedule is not None else None,
-            "seed": self.seed,
         }
 
     # endregion

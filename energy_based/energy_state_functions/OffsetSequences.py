@@ -4,10 +4,9 @@ from custom_tf_models.energy_based import TakeStepESF, ApplyOnRandomInput
 
 
 class OffsetSequences(TakeStepESF, ApplyOnRandomInput):
-    def __init__(self, seed, step_count: int):
+    def __init__(self, step_count: int):
         super(OffsetSequences, self).__init__(step_count=step_count)
         self.is_low_energy = False
-        self.seed = seed
 
     def call(self, inputs):
         inputs = ApplyOnRandomInput.call(self, inputs)
@@ -40,7 +39,7 @@ class OffsetSequences(TakeStepESF, ApplyOnRandomInput):
 
         min_offset = step_size // 2
         max_offset = length - step_size
-        offset = tf.random.uniform(shape=[], minval=min_offset, maxval=max_offset + 1, dtype=tf.int32, seed=self.seed)
+        offset = tf.random.uniform(shape=[], minval=min_offset, maxval=max_offset + 1, dtype=tf.int32)
 
         begin = tf.pad([offset], paddings=[[axis, sequence_rank - axis - 1]], constant_values=0)
         end = tf.pad([step_size], paddings=[[axis, sequence_rank - axis - 1]], constant_values=-1)

@@ -14,13 +14,11 @@ class IAE(AE):
                  encoder: Model,
                  decoder: Model,
                  step_size: int,
-                 seed=None,
                  **kwargs):
         super(IAE, self).__init__(encoder=encoder,
                                   decoder=decoder,
                                   **kwargs)
         self.step_size = step_size
-        self.seed = seed
 
     @tf.function
     def autoencode(self, inputs):
@@ -44,7 +42,7 @@ class IAE(AE):
 
         step_count = tf.shape(inputs)[1]
         max_offset = step_count - self.step_size
-        offset = tf.random.uniform(shape=[], minval=0, maxval=max_offset + 1, dtype=tf.int32, seed=self.seed)
+        offset = tf.random.uniform(shape=[], minval=0, maxval=max_offset + 1, dtype=tf.int32)
         target = inputs[:, offset:offset + self.step_size]
 
         factor = tf.cast(offset / max_offset, tf.float32)
@@ -177,7 +175,6 @@ class IAE(AE):
         config = {
             **super(IAE, self).get_config(),
             "step_count": self.step_size,
-            "seed": self.seed,
         }
         return config
 
@@ -236,6 +233,5 @@ class IAESchedule(CustomLearningRateSchedule):
             "max_reduction_factor": self.max_reduction_factor.numpy(),
             "recover_rate": self.recover_rate.numpy(),
             "epsilon": self.epsilon.numpy(),
-            "seed": self.seed,
         }
         return {**base_config, **config}

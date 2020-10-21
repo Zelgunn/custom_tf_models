@@ -17,7 +17,6 @@ class JEM(EBM):
                  sgld_step_size: float = 1.0,
                  sgld_noise: float = 0.01,
                  inputs_range: Tuple[float, float] = (-1.0, 1.0),
-                 seed=None,
                  **kwargs
                  ):
         super(JEM, self).__init__(energy_model=energy_model,
@@ -25,7 +24,6 @@ class JEM(EBM):
                                   optimizer=optimizer,
                                   energy_margin=energy_margin,
                                   energy_model_uses_ground_truth=False,
-                                  seed=seed,
                                   **kwargs)
         self.buffer_size = buffer_size
         self.buffer_reinitialization_frequency = buffer_reinitialization_frequency
@@ -79,12 +77,12 @@ class JEM(EBM):
         input_shape = self.energy_model.input_shape[part_index][1:]
         part_shape = [size, *input_shape]
         value = tf.random.uniform(minval=min_input_value, maxval=max_input_value,
-                                  shape=part_shape, dtype=tf.float32, seed=self.seed)
+                                  shape=part_shape, dtype=tf.float32)
         return value
 
     def sample_with_sgld(self, samples_count: tf.Tensor):
         indices = tf.random.uniform(shape=[samples_count], minval=0, maxval=self.buffer_size,
-                                    dtype=tf.int32, seed=self.seed)
+                                    dtype=tf.int32)
         samples = self.sample_replay_buffer(indices)
 
         def loop_cond(i, _):
@@ -111,7 +109,7 @@ class JEM(EBM):
         outputs_samples = []
         for i in range(self.inputs_count):
             sample = samples[i]
-            noise = tf.random.normal(shape=tf.shape(sample), stddev=self.sgld_noise, seed=self.seed)
+            noise = tf.random.normal(shape=tf.shape(sample), stddev=self.sgld_noise)
             sample += self.sgld_step_size * gradients[i] + noise
             sample = tf.stop_gradient(sample)
             outputs_samples.append(sample)
@@ -120,7 +118,7 @@ class JEM(EBM):
     def sample_replay_buffer(self, indices: tf.Tensor) -> List[tf.Tensor]:
         samples_count = tf.shape(indices)[0]
 
-        base_reinitialization_mask = tf.random.uniform([samples_count], minval=0.0, maxval=1.0, seed=self.seed)
+        base_reinitialization_mask = tf.random.uniform([samples_count], minval=0.0, maxval=1.0)
         base_reinitialization_mask = base_reinitialization_mask < self.buffer_reinitialization_frequency
 
         samples = []

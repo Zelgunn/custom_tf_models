@@ -26,8 +26,6 @@ class PreLED(LED):
                  description_energy_loss_lambda=1e-2,
                  use_noise=True,
                  noise_stddev=0.1,
-                 # reconstruct_noise=False,
-                 seed=None,
                  **kwargs
                  ):
         super(PreLED, self).__init__(encoder=encoder,
@@ -41,7 +39,6 @@ class PreLED(LED):
                                      use_noise=use_noise,
                                      noise_stddev=noise_stddev,
                                      reconstruct_noise=False,
-                                     seed=seed,
                                      **kwargs)
         self.predictor = predictor
         self.input_length = input_length

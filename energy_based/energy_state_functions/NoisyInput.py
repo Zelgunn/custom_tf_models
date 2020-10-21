@@ -6,15 +6,14 @@ from custom_tf_models.energy_based import ApplyOnRandomInput
 
 class NoisyInput(ApplyOnRandomInput):
     def __init__(self,
-                 seed,
                  gaussian_noise_stddev: float,
                  output_range: Tuple[float, float] = None):
-        super(NoisyInput, self).__init__(is_low_energy=True, seed=seed)
+        super(NoisyInput, self).__init__(is_low_energy=True)
         self.gaussian_noise_stddev = gaussian_noise_stddev
         self.output_range = output_range
 
     def apply_on_one(self, input_tensor):
-        noise: tf.Tensor = tf.random.normal(tf.shape(input_tensor), stddev=self.gaussian_noise_stddev, seed=self.seed)
+        noise: tf.Tensor = tf.random.normal(tf.shape(input_tensor), stddev=self.gaussian_noise_stddev)
         result = input_tensor + noise
         if self.output_range:
             result = tf.clip_by_value(result, self.output_min, self.output_max)

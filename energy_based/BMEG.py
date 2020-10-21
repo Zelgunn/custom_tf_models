@@ -43,7 +43,6 @@ class BMEG(Model):
                  energy_margin: float,
                  autoencoder_optimizer: tf.keras.optimizers.Optimizer,
                  generators_optimizer: tf.keras.optimizers.Optimizer,
-                 seed=None,
                  **kwargs):
         super(BMEG, self).__init__(**kwargs)
         self.models_1 = models_1
@@ -52,7 +51,6 @@ class BMEG(Model):
         self.energy_margin = tf.constant(energy_margin, dtype=tf.float32, name="energy_margin")
         self.autoencoder_optimizer = autoencoder_optimizer
         self.generators_optimizer = generators_optimizer
-        self.seed = seed
 
         def init_emphasis(shape, dtype=tf.float32):
             return tf.zeros(shape, dtype=dtype)
@@ -213,7 +211,7 @@ class BMEG(Model):
 
     @tf.function
     def get_noise(self, batch_size, name="noise"):
-        return tf.random.normal(shape=[batch_size, self.noise_size], name=name, seed=self.seed)
+        return tf.random.normal(shape=[batch_size, self.noise_size], name=name)
 
     @tf.function
     def generate_with_given_noise(self, latent_codes, noise):
@@ -320,6 +318,5 @@ class BMEG(Model):
             "energy_margin": self.energy_margin.numpy(),
             "autoencoder_optimizer": self.autoencoder_optimizer,
             "generators_optimizer": self.generators_optimizer,
-            "seed": self.seed,
         }
         return config

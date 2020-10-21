@@ -14,7 +14,6 @@ class EBM(Model):
                  energy_state_functions: List[EnergyStateFunction],
                  energy_margin: float = None,
                  weights_decay=2e-6,
-                 seed=None,
                  **kwargs
                  ):
         super(EBM, self).__init__(**kwargs)
@@ -23,7 +22,6 @@ class EBM(Model):
         self.high_energy_state_functions = [esf for esf in energy_state_functions if not esf.is_low_energy]
         self.energy_margin = energy_margin
         self.weights_decay = weights_decay
-        self.seed = seed
 
     def call(self, inputs, training=None, mask=None) -> Union[tf.Tensor, List[tf.Tensor]]:
         energies = self.energy_model(inputs)
@@ -138,6 +136,5 @@ class EBM(Model):
                 "optimizer": self.optimizer.get_config(),
                 "energy_margin": self.energy_margin,
                 "weights_decay": self.weights_decay,
-                "seed": self.seed,
             }
         return config

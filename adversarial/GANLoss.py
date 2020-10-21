@@ -49,11 +49,11 @@ class GANLoss(object):
 
 
 @tf.function
-def gradient_penalty(real: tf.Tensor, fake: tf.Tensor, discriminator: Union[Model, Callable], seed=None) -> tf.Tensor:
+def gradient_penalty(real: tf.Tensor, fake: tf.Tensor, discriminator: Union[Model, Callable]) -> tf.Tensor:
     fake = tf.stop_gradient(fake)
     batch_size = tf.shape(real)[0]
     factors_shape = [batch_size] + [1] * (real.shape.rank - 1)
-    factors = tf.random.uniform(shape=factors_shape, minval=0.0, maxval=1.0, dtype=tf.float32, seed=seed)
+    factors = tf.random.uniform(shape=factors_shape, minval=0.0, maxval=1.0, dtype=tf.float32)
     x_hat = lerp(real, fake, factors)
 
     with tf.GradientTape(watch_accessed_variables=False) as tape:

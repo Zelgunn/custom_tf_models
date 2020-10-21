@@ -24,7 +24,6 @@ class CoupledVAEGANs(Model):
                  domain_1_name="1",
                  domain_2_name="2",
                  gan_loss_mode=GANLossMode.LS_GAN,
-                 seed=None,
                  **kwargs
                  ):
         super(CoupledVAEGANs, self).__init__(**kwargs)
@@ -48,7 +47,6 @@ class CoupledVAEGANs(Model):
         self.domain_2_name = domain_2_name
 
         self.gan_loss = GANLoss(mode=gan_loss_mode)
-        self.seed = seed
 
     @tf.function
     def train_step(self, inputs) -> Dict[str, tf.Tensor]:
@@ -175,10 +173,8 @@ class CoupledVAEGANs(Model):
 
         # region Gradient penalty
         if self.gan_loss.mode == GANLossMode.W_GAN_GP:
-            gradient_penalty_loss_1 = gradient_penalty(real=x_1, fake=x_2_1, discriminator=self.discriminator_1,
-                                                       seed=self.seed)
-            gradient_penalty_loss_2 = gradient_penalty(real=x_2, fake=x_1_2, discriminator=self.discriminator_2,
-                                                       seed=self.seed)
+            gradient_penalty_loss_1 = gradient_penalty(real=x_1, fake=x_2_1, discriminator=self.discriminator_1)
+            gradient_penalty_loss_2 = gradient_penalty(real=x_2, fake=x_1_2, discriminator=self.discriminator_2)
             gradient_penalty_loss = (gradient_penalty_loss_1 + gradient_penalty_loss_2) * 0.5
             gradient_penalty_loss = gradient_penalty_loss * self.gradient_penalty_loss_weight
         else:
@@ -262,7 +258,7 @@ class CoupledVAEGANs(Model):
 
     def _decode(self, latent_code: tf.Tensor, to_domain_1: bool):
         code_shape = tf.shape(latent_code)
-        noise = tf.random.normal(shape=code_shape, mean=0.0, stddev=1.0, seed=self.seed)
+        noise = tf.random.normal(shape=code_shape, mean=0.0, stddev=1.0)
         generator = self.generator_1 if to_domain_1 else self.generator_2
         return generator.decode(latent_code + noise)
 
@@ -301,6 +297,5 @@ class CoupledVAEGANs(Model):
             "domain_2_name": self.domain_2_name,
 
             "gan_loss_mode": self.gan_loss.mode,
-            "seed": self.seed,
         }
     # endregion

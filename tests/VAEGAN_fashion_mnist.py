@@ -42,6 +42,8 @@ def extract_and_convert_image(inputs):
 
 
 def main():
+    tf.random.set_seed(42)
+
     input_shape = (28, 28, 1)
     code_size = 128
     batch_size = 64
