@@ -205,8 +205,6 @@ class LED(AE):
         # description_activation_order = tf.nn.relu(description_activation_order)
         # description_activation_order = tf.reduce_mean(description_activation_order)
 
-        tf.print(self.train_step_index, description_length)
-
         metrics = {
             "loss": loss,
             "reconstruction/error": reconstruction_loss,
