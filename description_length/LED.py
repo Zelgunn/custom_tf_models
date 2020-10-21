@@ -105,11 +105,11 @@ class LED(AE):
         }
         layers = [
             Conv1D(filters=32, **shared_params),
-            Conv1D(filters=32, **shared_params),
-            Conv1D(filters=32, **shared_params),
-            Conv1D(filters=32, **shared_params),
+            Conv1D(filters=16, **shared_params),
+            Conv1D(filters=8, **shared_params),
+            Conv1D(filters=4, **shared_params),
             Conv1D(filters=1, activation=descriptors_activation, kernel_initializer=kernel_initializer,
-                   kernel_size=kernel_size, padding="causal", name="DescriptionModuleOutput")
+                   kernel_size=kernel_size, padding="causal", name="DescriptionModuleOutput", use_bias=True)
         ]
 
         # shared_params = {
@@ -133,7 +133,7 @@ class LED(AE):
         if merge_dims_with_features:
             target_input_shape = (block_count, features_per_block)
         else:
-            layers = [TimeDistributed(layer) for layer in layers]
+            layers = [TimeDistributed(layer, name="{}Distributed".format(layer.name)) for layer in layers]
             dimensions_size = np.prod(latent_code_shape[:-1])
             target_input_shape = (dimensions_size, block_count, features_per_block)
 
@@ -204,11 +204,11 @@ class LED(AE):
             reconstruction_goal = 0.0
             reconstruction_goal_delta = 0.0
 
-        description_energy_left = description_energy[..., :-1]
-        description_energy_right = description_energy[..., 1:]
-        description_activation_order = description_energy_right - description_energy_left
-        description_activation_order = tf.nn.relu(description_activation_order)
-        description_activation_order = tf.reduce_mean(description_activation_order)
+        # description_energy_left = description_energy[..., :-1]
+        # description_energy_right = description_energy[..., 1:]
+        # description_activation_order = description_energy_right - description_energy_left
+        # description_activation_order = tf.nn.relu(description_activation_order)
+        # description_activation_order = tf.reduce_mean(description_activation_order)
 
         metrics = {
             "loss": loss,
@@ -218,7 +218,7 @@ class LED(AE):
             "description/energy": description_energy_loss,
             "description/loss_weight": description_energy_loss_weight,
             "description/length": description_length,
-            "description/activation_order": description_activation_order,
+            # "description/activation_order": description_activation_order,
         }
         # endregion
 
@@ -238,8 +238,8 @@ class LED(AE):
         goal = self.goal_schedule(self.train_step_index)
         reconstruction_loss = tf.stop_gradient(reconstruction_loss)
         goal_weight = (goal - reconstruction_loss) / goal
-        goal_weight = tf.clip_by_value(goal_weight * 4.0, 0.0, 1.0)
-        # goal_weight = tf.clip_by_value(goal_weight * 4.0, -1.0, 1.0)
+        # goal_weight = tf.clip_by_value(goal_weight * 4.0, 0.0, 1.0)
+        goal_weight = tf.clip_by_value(goal_weight * 4.0, -1.0, 1.0)
         # goal_weight = 1.0 - tf.minimum((reconstruction_loss - goal) / goal, 1.0)
         return self._description_energy_loss_lambda * goal_weight
 
@@ -331,7 +331,6 @@ class LED(AE):
 
     @property
     def additional_test_metrics(self):
-        # return [self.compute_description_energy, self.compute_total_energy, self.compute_total_energy_x3]
         return [self.compute_description_energy]
     # endregion
 
@@ -371,6 +370,5 @@ class LEDGoal(object):
             "decay_steps": self.decay_steps,
             "decay_rate": self.decay_rate,
             "staircase": self.staircase,
-            "offset": self.offset,
-            "version": "positive range init, soft order",
+            "offset": self.offset
         }
