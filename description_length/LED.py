@@ -1,27 +1,17 @@
 import tensorflow as tf
 from tensorflow.python.keras.models import Model, Sequential
-from tensorflow.python.keras.layers import Conv1D, Reshape, TimeDistributed
+from tensorflow.python.keras.layers import Conv1D, Reshape, TimeDistributed, Layer
 from tensorflow.python.ops.init_ops import VarianceScaling
 import numpy as np
 from typing import Dict, Any, Tuple
 
 from custom_tf_models.basic.AE import AE
 from CustomKerasLayers import TileLayer
-# from CustomKerasLayers.layers.DenseSelfAttention import DenseSelfAttention
-from misc_utils.math_utils import binarize, reduce_mean_from
+from misc_utils.math_utils import reduce_mean_from
 from misc_utils.general import expand_dims_to_rank
 
 
-# TODO : Experiment (HParam) - Constant threshold
-# TODO : Experiment (HParam) - Small model + Denoise mode
 # TODO : Experiment (HParam) - MAE for training (instead of MSE)
-# TODO : Experiment (HParam) - Min desc. loss weight = 0
-# TODO : Experiment (Model) - Progressively lower energy - Soft
-# TODO : Experiment (Model) - Progressively lower energy - Hard (would enforce a mask like : [1] * n + [0] * (N-n) )
-# TODO : Experiment (Struct) - Replace conv. by square matrices in desc. model
-# TODO : Experiment (Struct) - Replace conv. by residual conv.
-# TODO : Experiment (Method) - Pre-train autoencoder, freeze its weights and then train the description model
-# TODO : Experiment (Method) - Pre-train autoencoder, then train all model
 
 class LEDGoal(object):
     def __init__(self,
@@ -62,6 +52,17 @@ class LEDGoal(object):
         }
 
 
+class InvReLU(Layer):
+    def call(self, inputs, **kwargs):
+        return -tf.nn.relu(inputs)
+
+    def get_config(self):
+        return {}
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
 # LED : Low Energy Descriptors
 class LED(AE):
     def __init__(self,
@@ -69,9 +70,6 @@ class LED(AE):
                  decoder: Model,
                  features_per_block: int,
                  merge_dims_with_features=False,
-                 descriptors_activation="tanh",
-                 binarization_temperature=50.0,
-                 add_binarization_noise_to_mask=True,
                  description_energy_loss_lambda=1e-2,
                  use_noise=True,
                  noise_stddev=0.1,
@@ -79,7 +77,8 @@ class LED(AE):
                  goal_schedule: LEDGoal = None,
                  allow_negative_description_loss_weight=True,
                  goal_delta_factor=4.0,
-                 unmasked_reconstruction_weight=0.0,
+                 unmasked_reconstruction_weight=1.0,
+                 energy_margin=5.0,
                  **kwargs
                  ):
         super(LED, self).__init__(encoder=encoder,
@@ -87,7 +86,6 @@ class LED(AE):
                                   **kwargs)
         self.features_per_block = features_per_block
         self.merge_dims_with_features = merge_dims_with_features
-        self.descriptors_activation = descriptors_activation
         self.description_energy_loss_lambda = description_energy_loss_lambda
 
         # region Input noise parameters
@@ -99,22 +97,9 @@ class LED(AE):
         self.noise_type = "dense"
         # endregion
 
-        # region Binarization parameters
-        self.binarization_temperature = binarization_temperature
-        self.add_binarization_noise_to_mask = add_binarization_noise_to_mask
-
-        bin_threshold = self.descriptor_activations_map()[descriptors_activation]
-        self._binarization_threshold = tf.constant(bin_threshold, dtype=tf.float32, name="bin_threshold")
-        self._binarization_temperature = tf.constant(binarization_temperature, dtype=tf.float32, name="bin_temperature")
-        self._description_energy_loss_lambda = tf.constant(description_energy_loss_lambda, dtype=tf.float32,
-                                                           name="description_energy_loss_lambda")
-        # endregion
-
         self.description_energy_model = self._make_description_model()
 
         # region Goal schedule
-        if goal_schedule is None:
-            goal_schedule = LEDGoal(offset=0.035, initial_rate=0.1, decay_steps=1000, decay_rate=0.6, staircase=False)
         self.goal_schedule = goal_schedule
         self.train_step_index = tf.Variable(initial_value=0, trainable=False, name="train_step_index", dtype=tf.int32)
 
@@ -123,8 +108,15 @@ class LED(AE):
         # endregion
 
         self.unmasked_reconstruction_weight = unmasked_reconstruction_weight
+        self.energy_margin = energy_margin
+
+        # region Tensorflow constants
+        self._description_energy_loss_lambda = tf.constant(description_energy_loss_lambda, dtype=tf.float32,
+                                                           name="description_energy_loss_lambda")
         self._unmasked_reconstruction_weight = tf.constant(unmasked_reconstruction_weight, dtype=tf.float32,
                                                            name="unmasked_reconstruction_weight")
+        self._energy_margin = tf.constant(energy_margin, dtype=tf.float32, name="energy_margin")
+        # endregion
 
     # region Make description model
     def _make_description_model(self):
@@ -159,26 +151,28 @@ class LED(AE):
         }
         layers = [
             Conv1D(filters=32, **shared_params),
-            Conv1D(filters=16, **shared_params),
-            Conv1D(filters=8, **shared_params),
-            Conv1D(filters=4, **shared_params),
-            Conv1D(filters=1, activation=descriptors_activation, kernel_initializer=kernel_initializer,
+            Conv1D(filters=32, **shared_params),
+            Conv1D(filters=32, **shared_params),
+            Conv1D(filters=32, **shared_params),
+            Conv1D(filters=1, activation="relu", kernel_initializer=kernel_initializer,
                    kernel_size=kernel_size, padding="causal", name="DescriptionModuleOutput", use_bias=True)
         ]
 
         # shared_params = {
         #     "head_count": 4,
-        #     "head_size": 8,
-        #     "use_mask": True,
+        #     "kernel_size": kernel_size,
+        #     "activation": "relu",
+        #     "use_bias": True,
+        #     "kernel_initializer": kernel_initializer,
         # }
-        # default_core_activation = "relu"
         # layers = [
-        #     DenseSelfAttention(output_size=32, activation=default_core_activation, **shared_params),
-        #     DenseSelfAttention(output_size=32, activation=default_core_activation, **shared_params),
-        #     DenseSelfAttention(output_size=32, activation=default_core_activation, **shared_params),
-        #     DenseSelfAttention(output_size=32, activation=default_core_activation, **shared_params),
-        #     DenseSelfAttention(output_size=1, activation=descriptors_activation, name="DescriptionModuleOutput",
-        #                        **shared_params),
+        #     StandAloneSelfAttention1D(head_size=32, **shared_params),
+        #     StandAloneSelfAttention1D(head_size=16, **shared_params),
+        #     StandAloneSelfAttention1D(head_size=8, **shared_params),
+        #     StandAloneSelfAttention1D(head_size=4, **shared_params),
+        #     Conv1D(filters=1, kernel_size=kernel_size, use_bias=True,
+        #            kernel_initializer=kernel_initializer, padding="causal",
+        #            activation=descriptors_activation, name="DescriptionModuleOutput")
         # ]
         # endregion
 
@@ -196,25 +190,34 @@ class LED(AE):
 
         input_reshape = Reshape(target_shape=target_input_shape, input_shape=latent_code_shape)
         output_reshape = Reshape(target_shape=latent_code_shape)
-        layers = [input_reshape, *layers, output_reshape]
+        output_activation = InvReLU()
+        layers = [input_reshape, *layers, output_reshape, output_activation]
         # endregion
 
         return Sequential(layers=layers, name=name)
 
-    @staticmethod
-    def descriptor_activations_map() -> Dict[str, float]:
-        return {"tanh": 0.0, "sigmoid": 0.5, "linear": 0.0}
-
     # endregion
 
     # region Forward
+    """
+        This function returns a random mask, where the probability of activation depends on the `description_energy`
+        parameter.
+        params:
+            `description_energy` : Assumed to be a tensor of only negative values (or zeros).
+        returns:
+            A tensor, with same shape and dtype as `description_energy` 
+    """
+
     @tf.function
     def get_description_mask(self, description_energy: tf.Tensor) -> tf.Tensor:
-        mask = binarize(description_energy,
-                        threshold=self._binarization_threshold,
-                        temperature=self._binarization_temperature,
-                        add_noise=self.add_binarization_noise_to_mask)
-        return mask
+        # assumes all(description_energy <= 0)
+        activation_probability = tf.exp(description_energy)
+        # so that all(0 < activation_probability <= 1)
+        activation_noise = tf.random.uniform(shape=tf.shape(activation_probability), minval=0.0, maxval=1.0)
+        activated = activation_probability >= activation_noise
+        binarization_noise = tf.cast(activated, tf.float32) - tf.stop_gradient(activation_probability)
+        description_mask = activation_probability + binarization_noise
+        return description_mask
 
     @tf.function
     def encode(self, inputs: tf.Tensor) -> tf.Tensor:
@@ -242,7 +245,8 @@ class LED(AE):
         reconstruction_loss = self.reconstruction_loss(target, outputs)
         description_energy_loss = self.description_energy_loss(description_energy)
         description_energy_loss_weight = self.get_description_energy_loss_weight(reconstruction_loss)
-        loss = reconstruction_loss + description_energy_loss_weight * description_energy_loss
+        description_energy_loss *= description_energy_loss_weight
+        loss = reconstruction_loss + description_energy_loss
 
         if self.perform_unmasked_reconstruction:
             unmasked_outputs = self.decoder(encoded)
@@ -256,20 +260,21 @@ class LED(AE):
         # region Metrics
         reconstruction_metrics = {"reconstruction/error": reconstruction_loss}
 
-        reconstruction_goal = self.goal_schedule(self.train_step_index)
-        reconstruction_goal_delta = reconstruction_loss - reconstruction_goal
         if self.goal_schedule is not None:
+            reconstruction_goal = self.goal_schedule(self.train_step_index)
+            reconstruction_goal_delta = reconstruction_loss - reconstruction_goal
             reconstruction_metrics["reconstruction/goal"] = reconstruction_goal
             reconstruction_metrics["reconstruction/goal_delta"] = reconstruction_goal_delta
 
         if self.perform_unmasked_reconstruction:
             reconstruction_metrics["reconstruction/unmasked_error"] = unmasked_reconstruction_error
 
+        description_energy = tf.reduce_mean(description_energy)
         description_length = tf.reduce_mean(description_mask)
         description_metrics = {
-            "description/energy": description_energy_loss,
+            "description/energy": description_energy,
             "description/loss_weight": description_energy_loss_weight,
-            "description/length": description_length
+            "description/length": description_length,
         }
 
         metrics = {
@@ -327,7 +332,9 @@ class LED(AE):
 
     @tf.function
     def description_energy_loss(self, description_energy: tf.Tensor) -> tf.Tensor:
-        return tf.reduce_mean(description_energy)
+        description_energy_loss = tf.nn.relu(self._energy_margin + description_energy)
+        description_energy_loss = tf.reduce_mean(description_energy_loss)
+        return description_energy_loss
 
     # endregion
 
@@ -339,8 +346,6 @@ class LED(AE):
             "description_energy_model": self.description_energy_model.get_config(),
             "features_per_block": self.features_per_block,
             "merge_dims_with_features": self.merge_dims_with_features,
-            "binarization_temperature": self.binarization_temperature,
-            "add_binarization_noise_to_mask": self.add_binarization_noise_to_mask,
             "description_energy_loss_lambda": self.description_energy_loss_lambda,
             "use_noise": self.use_noise,
             "noise_stddev": self.noise_stddev,
@@ -349,6 +354,7 @@ class LED(AE):
             "allow_negative_description_loss_weight": self.allow_negative_description_loss_weight,
             "goal_delta_factor": self.goal_delta_factor,
             "unmasked_reconstruction_weight": self.unmasked_reconstruction_weight,
+            "energy_margin": self.energy_margin,
         }
 
     # endregion
