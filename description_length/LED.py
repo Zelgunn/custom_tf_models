@@ -122,22 +122,15 @@ class LED(AE):
     def _make_description_model(self):
         return self.make_description_model(latent_code_shape=self.encoder.output_shape[1:],
                                            features_per_block=self.features_per_block,
-                                           merge_dims_with_features=self.merge_dims_with_features,
-                                           descriptors_activation=self.descriptors_activation)
+                                           merge_dims_with_features=self.merge_dims_with_features)
 
     @staticmethod
     def make_description_model(latent_code_shape,
                                features_per_block: int,
                                merge_dims_with_features: bool,
-                               descriptors_activation: str,
                                name="DescriptionEnergyModel"):
         features_dims = latent_code_shape if merge_dims_with_features else latent_code_shape[-1:]
         block_count = np.prod(features_dims) // features_per_block
-
-        if descriptors_activation not in LED.descriptor_activations_map():
-            valid_activations = tuple(LED.descriptor_activations_map().keys())
-            raise ValueError("`output_activation` must be in ({}). Got {}."
-                             .format(valid_activations, descriptors_activation))
 
         # region Core
 
@@ -238,6 +231,10 @@ class LED(AE):
         encoded = self.encoder(inputs)
         description_energy = self.description_energy_model(encoded)
         description_mask = self.get_description_mask(description_energy)
+        if not self.perform_unmasked_reconstruction:
+            mask_shape = tf.shape(description_mask)
+            mask_override = tf.random.uniform(shape=mask_shape, minval=0.0, maxval=1.0, dtype=tf.float32) < 0.1
+            description_mask = tf.where(mask_override, tf.ones_like(description_mask), description_mask)
         outputs = self.decoder(encoded * description_mask)
         # endregion
 
@@ -328,7 +325,8 @@ class LED(AE):
 
     @tf.function
     def reconstruction_loss(self, inputs: tf.Tensor, outputs: tf.Tensor) -> tf.Tensor:
-        return tf.reduce_mean(tf.square(inputs - outputs))
+        # return tf.reduce_mean(tf.square(inputs - outputs))
+        return tf.reduce_mean(tf.abs(inputs - outputs))
 
     @tf.function
     def description_energy_loss(self, description_energy: tf.Tensor) -> tf.Tensor:
