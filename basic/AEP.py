@@ -27,7 +27,8 @@ class AEP(AE):
         encoded = self.encode(inputs)
         decoded = self.decode(encoded)
         predicted = self.predictor(encoded)
-        outputs = tf.concat([decoded, predicted], axis=1)
+        temporal_mean = self.get_temporal_mean(inputs)
+        outputs = tf.concat([decoded, predicted + temporal_mean], axis=1)
         return outputs
 
     @tf.function
@@ -36,16 +37,42 @@ class AEP(AE):
         return self.encoder(inputs)
 
     @tf.function
+    def get_temporal_mean(self, inputs):
+        inputs = inputs[:, self.input_length:]
+        return tf.reduce_mean(inputs, axis=1, keepdims=True)
+
+    @tf.function
+    def get_reconstruction_loss(self, inputs, outputs):
+        return reduce_mean_from(tf.square(inputs - outputs), start_axis=2)
+
+    @tf.function
     def compute_loss(self,
                      inputs
                      ) -> Dict[str, tf.Tensor]:
         outputs = self(inputs)
-        loss = reduce_mean_from(tf.square(inputs - outputs), start_axis=2)
+
+        encoded = self.encode(inputs)
+        decoded = self.decode(encoded)
+        predicted = self.predictor(encoded)
+
+        decoder_target = inputs[:, :self.input_length]
+        predictor_target = inputs[:, self.input_length:]
+
+        decoder_loss = self.get_reconstruction_loss(decoder_target, decoded)
+        predictor_loss = self.get_reconstruction_loss(predictor_target, predicted)
+        loss = tf.concat([decoder_loss, predictor_loss], axis=1)
+
         if self.use_temporal_loss:
             output_length = tf.shape(outputs)[1] - self.input_length
             weights = get_temporal_loss_weights(self.input_length, output_length)
             loss = tf.reduce_mean(loss * weights)
-        return {"loss": loss}
+        else:
+            loss = tf.reduce_mean(loss)
+
+        decoder_loss = tf.reduce_mean(decoder_loss)
+        predictor_loss = tf.reduce_mean(predictor_loss)
+
+        return {"loss": loss, "decoder_loss": decoder_loss, "predictor_loss": predictor_loss}
 
     def get_config(self):
         config = {
@@ -53,9 +80,11 @@ class AEP(AE):
             "decoder": self.decoder.get_config(),
             "predictor": self.predictor.get_config(),
             "input_length": self.input_length,
-            "learning_rate": self.learning_rate,
             "use_temporal_loss": self.use_temporal_loss
         }
+        if self.optimizer is not None:
+            config["optimizer"] = self.optimizer.get_config()
+
         return config
 
 
