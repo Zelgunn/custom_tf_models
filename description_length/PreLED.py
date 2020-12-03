@@ -1,11 +1,8 @@
 import tensorflow as tf
 from tensorflow.python.keras.models import Model
-# noinspection PyUnresolvedReferences
-from tensorflow.python.keras.initializers import VarianceScaling
-import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
-from custom_tf_models import LED
+from custom_tf_models.description_length.LED import LED, LEDGoal
 from custom_tf_models.basic.AEP import get_temporal_loss_weights
 from misc_utils.math_utils import reduce_mean_from
 
@@ -20,25 +17,30 @@ class PreLED(LED):
                  use_temporal_reconstruction_loss=True,
                  features_per_block=1,
                  merge_dims_with_features=False,
-                 descriptors_activation="tanh",
-                 binarization_temperature=50.0,
-                 add_binarization_noise_to_mask=True,
                  description_energy_loss_lambda=1e-2,
                  use_noise=True,
                  noise_stddev=0.1,
+                 reconstruct_noise=False,
+                 goal_schedule: LEDGoal = None,
+                 allow_negative_description_loss_weight=True,
+                 goal_delta_factor=4.0,
+                 unmasked_reconstruction_weight=1.0,
+                 energy_margin=5.0,
                  **kwargs
                  ):
         super(PreLED, self).__init__(encoder=encoder,
                                      decoder=decoder,
                                      features_per_block=features_per_block,
                                      merge_dims_with_features=merge_dims_with_features,
-                                     descriptors_activation=descriptors_activation,
-                                     binarization_temperature=binarization_temperature,
-                                     add_binarization_noise_to_mask=add_binarization_noise_to_mask,
                                      description_energy_loss_lambda=description_energy_loss_lambda,
                                      use_noise=use_noise,
                                      noise_stddev=noise_stddev,
-                                     reconstruct_noise=False,
+                                     reconstruct_noise=reconstruct_noise,
+                                     goal_schedule=goal_schedule,
+                                     allow_negative_description_loss_weight=allow_negative_description_loss_weight,
+                                     goal_delta_factor=goal_delta_factor,
+                                     unmasked_reconstruction_weight=unmasked_reconstruction_weight,
+                                     energy_margin=energy_margin,
                                      **kwargs)
         self.predictor = predictor
         self.input_length = input_length
@@ -75,46 +77,90 @@ class PreLED(LED):
     @tf.function
     def compute_loss(self, inputs) -> Dict[str, tf.Tensor]:
         inputs, target, _ = self.add_training_noise(inputs)
-        inputs = inputs[:, :self.input_length]
+        encoder_inputs = inputs[:, :self.input_length]
 
         # region Forward
-        encoded = self.encoder(inputs)
+        encoded = self.encoder(encoder_inputs)
         description_energy = self.description_energy_model(encoded)
         description_mask = self.get_description_mask(description_energy)
-        encoded *= description_mask
-        outputs = self.decode_and_predict_next(encoded)
+        masked_encoded = encoded * description_mask
+
+        decoded = self.decode(masked_encoded)
+        predicted = self.predictor(masked_encoded)
+
         # endregion
 
         # region Loss
-        reconstruction_loss = self.reconstruction_loss(target, outputs)
+        reconstruction_metrics = self.get_reconstruction_metrics(inputs, decoded, predicted)
+        reconstruction_loss = reconstruction_metrics["rec/combined"]
+
         description_energy_loss = self.description_energy_loss(description_energy)
-        loss = reconstruction_loss + self._description_energy_loss_lambda * description_energy_loss
+        description_energy_loss_weight = self.get_description_energy_loss_weight(reconstruction_loss)
+        description_energy_loss *= description_energy_loss_weight
+
+        loss = reconstruction_loss + description_energy_loss
+
+        if self.perform_unmasked_reconstruction:
+            unmasked_decoded = self.decoder(encoded)
+            unmasked_predicted = self.predictor(encoded)
+            unmasked_metrics = self.get_reconstruction_metrics(inputs, unmasked_decoded, unmasked_predicted)
+            unmasked_reconstruction_error = unmasked_metrics["rec/combined"]
+            loss += unmasked_reconstruction_error * self._unmasked_reconstruction_weight
+        else:
+            unmasked_reconstruction_error = None
         # endregion
 
         # region Metrics
-        description_length = tf.reduce_mean(tf.stop_gradient(description_mask))
+        if self.goal_schedule is not None:
+            reconstruction_goal = self.goal_schedule(self.train_step_index)
+            reconstruction_goal_delta = reconstruction_loss - reconstruction_goal
+            reconstruction_metrics["rec/goal"] = reconstruction_goal
+            reconstruction_metrics["rec/goal_delta"] = reconstruction_goal_delta
+
+        if self.perform_unmasked_reconstruction:
+            reconstruction_metrics["rec/unmasked_combined"] = unmasked_reconstruction_error
+
+        description_energy = tf.reduce_mean(description_energy)
+        description_length = tf.reduce_mean(description_mask)
+        description_metrics = {
+            "description/energy": description_energy,
+            "description/loss_weight": description_energy_loss_weight,
+            "description/length": description_length,
+        }
 
         metrics = {
             "loss": loss,
-            "reconstruction_loss": reconstruction_loss,
-            "description_energy_loss": description_energy_loss,
-            "description_length": description_length,
+            **reconstruction_metrics,
+            **description_metrics,
         }
         # endregion
 
         return metrics
 
     @tf.function
-    def reconstruction_loss(self, inputs: tf.Tensor, outputs: tf.Tensor) -> tf.Tensor:
+    def get_reconstruction_metrics(self, inputs: tf.Tensor, decoded: tf.Tensor, predicted: tf.Tensor):
+        decoder_target = inputs[:, :self.input_length]
+        predictor_target = inputs[:, self.input_length:]
+
+        decoder_loss = self.get_reconstruction_loss(decoder_target, decoded)
+        predictor_loss = self.get_reconstruction_loss(predictor_target, predicted)
+        combined_loss = tf.concat([decoder_loss, predictor_loss], axis=1)
+
         if self.use_temporal_reconstruction_loss:
-            loss = tf.square(inputs - outputs)
-            loss = reduce_mean_from(loss, start_axis=2)
-            output_length = tf.shape(outputs)[1] - self.input_length
+            output_length = tf.shape(predicted)[1]
             weights = get_temporal_loss_weights(self.input_length, output_length)
-            loss = tf.reduce_mean(loss * weights)
+            combined_loss = tf.reduce_mean(combined_loss * weights)
         else:
-            loss = super(PreLED, self).reconstruction_loss(inputs, outputs)
-        return loss
+            combined_loss = tf.reduce_mean(combined_loss)
+
+        decoder_loss = tf.reduce_mean(decoder_loss)
+        predictor_loss = tf.reduce_mean(predictor_loss)
+
+        return {"rec/combined": combined_loss, "rec/decoder": decoder_loss, "rec/predictor": predictor_loss}
+
+    @tf.function
+    def get_reconstruction_loss(self, inputs: tf.Tensor, outputs: tf.Tensor):
+        return reduce_mean_from(tf.square(inputs - outputs), start_axis=2)
 
     # endregion
 

@@ -14,6 +14,7 @@ class AEP(AE):
                  predictor: Model,
                  input_length: int,
                  use_temporal_loss=True,
+                 predictor_loss_lambda=5.0,
                  **kwargs):
         super(AEP, self).__init__(encoder=encoder,
                                   decoder=decoder,
@@ -21,14 +22,16 @@ class AEP(AE):
         self.predictor = predictor
         self.input_length = input_length
         self.use_temporal_loss = use_temporal_loss
+        self.predictor_loss_lambda = predictor_loss_lambda
+        self._predictor_loss_lambda = tf.constant(predictor_loss_lambda, dtype=tf.float32, name="predictor_loss_lambda")
 
     @tf.function
     def autoencode(self, inputs):
         encoded = self.encode(inputs)
         decoded = self.decode(encoded)
         predicted = self.predictor(encoded)
-        temporal_mean = self.get_temporal_mean(inputs)
-        outputs = tf.concat([decoded, predicted + temporal_mean], axis=1)
+        temporal_base = self.get_temporal_base(inputs)
+        outputs = tf.concat([decoded, predicted + temporal_base], axis=1)
         return outputs
 
     @tf.function
@@ -37,9 +40,8 @@ class AEP(AE):
         return self.encoder(inputs)
 
     @tf.function
-    def get_temporal_mean(self, inputs):
-        inputs = inputs[:, self.input_length:]
-        return tf.reduce_mean(inputs, axis=1, keepdims=True)
+    def get_temporal_base(self, inputs):
+        return inputs[:, self.input_length - 1:self.input_length]
 
     @tf.function
     def get_reconstruction_loss(self, inputs, outputs):
@@ -49,21 +51,22 @@ class AEP(AE):
     def compute_loss(self,
                      inputs
                      ) -> Dict[str, tf.Tensor]:
-        outputs = self(inputs)
-
         encoded = self.encode(inputs)
         decoded = self.decode(encoded)
         predicted = self.predictor(encoded)
 
         decoder_target = inputs[:, :self.input_length]
         predictor_target = inputs[:, self.input_length:]
+        temporal_base = self.get_temporal_base(inputs)
+        predictor_target -= temporal_base
 
         decoder_loss = self.get_reconstruction_loss(decoder_target, decoded)
         predictor_loss = self.get_reconstruction_loss(predictor_target, predicted)
+        predictor_loss *= self._predictor_loss_lambda
         loss = tf.concat([decoder_loss, predictor_loss], axis=1)
 
         if self.use_temporal_loss:
-            output_length = tf.shape(outputs)[1] - self.input_length
+            output_length = tf.shape(predicted)[1]
             weights = get_temporal_loss_weights(self.input_length, output_length)
             loss = tf.reduce_mean(loss * weights)
         else:
@@ -80,7 +83,8 @@ class AEP(AE):
             "decoder": self.decoder.get_config(),
             "predictor": self.predictor.get_config(),
             "input_length": self.input_length,
-            "use_temporal_loss": self.use_temporal_loss
+            "use_temporal_loss": self.use_temporal_loss,
+            "predictor_loss_lambda": self.predictor_loss_lambda,
         }
         if self.optimizer is not None:
             config["optimizer"] = self.optimizer.get_config()
