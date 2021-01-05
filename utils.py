@@ -41,7 +41,7 @@ def split_steps(inputs, step_size, merge_batch_and_steps):
 
 
 # @tf.function
-def gradient_difference_loss(y_true, y_pred, axis=(-2, -3), alpha=1):
+def get_gradient_difference_loss(y_true, y_pred, axis=(-2, -3), alpha=1):
     if not isinstance(axis, (tuple, list)):
         axis = [axis]
 

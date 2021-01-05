@@ -4,7 +4,7 @@ from tensorflow.python.keras.models import Model
 from typing import Dict, Any, Union, List
 
 from custom_tf_models.description_length.LED import LED
-from custom_tf_models.adversarial.GANLoss import gradient_penalty
+from custom_tf_models.adversarial.GANLoss import compute_gradient_penalty
 
 
 # LED : Adversarial Low Energy Descriptors
@@ -48,8 +48,8 @@ class ALED(LED):
 
     @tf.function
     def gradient_penalty(self, real_inputs, fake_inputs):
-        led_gradient_penalty = gradient_penalty(real=real_inputs, fake=fake_inputs,
-                                                discriminator=self.compute_description_energy)
+        led_gradient_penalty = compute_gradient_penalty(real=real_inputs, fake=fake_inputs,
+                                                        discriminator=self.compute_description_energy)
         return led_gradient_penalty
 
     @tf.function

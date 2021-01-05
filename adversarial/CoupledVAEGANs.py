@@ -4,7 +4,7 @@ from tensorflow.python.keras import Model
 from typing import Dict, Tuple
 
 from custom_tf_models.basic.AE import AE
-from custom_tf_models.adversarial import gradient_penalty, GANLoss, GANLossMode
+from custom_tf_models.adversarial import compute_gradient_penalty, GANLoss, GANLossMode
 
 
 class CoupledVAEGANs(Model):
@@ -173,8 +173,8 @@ class CoupledVAEGANs(Model):
 
         # region Gradient penalty
         if self.gan_loss.mode == GANLossMode.W_GAN_GP:
-            gradient_penalty_loss_1 = gradient_penalty(real=x_1, fake=x_2_1, discriminator=self.discriminator_1)
-            gradient_penalty_loss_2 = gradient_penalty(real=x_2, fake=x_1_2, discriminator=self.discriminator_2)
+            gradient_penalty_loss_1 = compute_gradient_penalty(real=x_1, fake=x_2_1, discriminator=self.discriminator_1)
+            gradient_penalty_loss_2 = compute_gradient_penalty(real=x_2, fake=x_1_2, discriminator=self.discriminator_2)
             gradient_penalty_loss = (gradient_penalty_loss_1 + gradient_penalty_loss_2) * 0.5
             gradient_penalty_loss = gradient_penalty_loss * self.gradient_penalty_loss_weight
         else:

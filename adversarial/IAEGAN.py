@@ -5,7 +5,7 @@ from typing import Tuple, Dict, Any
 
 from misc_utils.math_utils import lerp
 from custom_tf_models import IAE
-from custom_tf_models.adversarial import GANLoss, GANLossMode, gradient_penalty
+from custom_tf_models.adversarial import GANLoss, GANLossMode, compute_gradient_penalty
 
 
 class IAEGAN(IAE):
@@ -137,7 +137,7 @@ class IAEGAN(IAE):
 
     @tf.function
     def gradient_penalty(self, real, fake) -> tf.Tensor:
-        return gradient_penalty(real=real, fake=fake, discriminator=self.discriminator)
+        return compute_gradient_penalty(real=real, fake=fake, discriminator=self.discriminator)
 
     # region select_two_latent_codes (from interpolated latent code)
     @tf.function

@@ -3,12 +3,14 @@
     <words>
       <w>binarization</w>
       <w>binarize</w>
+      <w>determistic</w>
       <w>initializers</w>
       <w>maxval</w>
       <w>minval</w>
       <w>sgld</w>
       <w>tensorflow</w>
       <w>unstandardize</w>
+      <w>wasserstein</w>
     </words>
   </dictionary>
 </component>

@@ -2,7 +2,7 @@ import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import Dict, Union, List, Tuple
 
-from utils import gradient_difference_loss
+from utils import get_gradient_difference_loss
 from misc_utils.math_utils import reduce_mean_from
 
 
@@ -249,8 +249,8 @@ class BMEG(Model):
         gradient_axis_1 = tuple(range(1, input_1.shape.rank - 1))
         gradient_axis_2 = tuple(range(1, input_2.shape.rank - 1))
 
-        gradient_error_1 = reduce_mean_from(gradient_difference_loss(input_1, reconstructed_1, axis=gradient_axis_1))
-        gradient_error_2 = reduce_mean_from(gradient_difference_loss(input_2, reconstructed_2, axis=gradient_axis_2))
+        gradient_error_1 = reduce_mean_from(get_gradient_difference_loss(input_1, reconstructed_1, axis=gradient_axis_1))
+        gradient_error_2 = reduce_mean_from(get_gradient_difference_loss(input_2, reconstructed_2, axis=gradient_axis_2))
 
         return gradient_error_1 + gradient_error_2
 
