@@ -29,14 +29,12 @@ class EBAE(EBM):
                  decoder: Model,
                  energy_state_functions: List[EnergyStateFunction],
                  energy_margin: float = None,
-                 weights_decay=2e-6,
                  **kwargs
                  ):
         energy_model = EnergyModel(autoencoder=AE(encoder=encoder, decoder=decoder))
         super(EBAE, self).__init__(energy_model=energy_model,
                                    energy_state_functions=energy_state_functions,
                                    energy_margin=energy_margin,
-                                   weights_decay=weights_decay,
                                    **kwargs)
 
     def compute_loss_for_energy(self, inputs, low_energy: bool) -> Tuple[tf.Tensor, tf.Tensor]:

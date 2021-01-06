@@ -90,11 +90,6 @@ class BMEG(Model):
             discriminator_loss = metrics["discriminator_loss"]
             generators_loss = metrics["generators_loss"]
 
-            # weights_decay = self.weights_decay_loss(l2=1e-5)
-            # encoders_loss += weights_decay
-            # discriminator_loss += weights_decay
-            # generators_loss += weights_decay
-
         encoders_gradient = encoders_tape.gradient(encoders_loss, self.encoders_trainable_variables)
         discriminator_gradient = discriminator_tape.gradient(discriminator_loss, self.discriminator_trainable_variables)
         generators_gradient = generators_tape.gradient(generators_loss, self.generators_trainable_variables)

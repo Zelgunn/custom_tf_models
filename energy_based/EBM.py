@@ -13,7 +13,6 @@ class EBM(Model):
                  energy_model: Model,
                  energy_state_functions: List[EnergyStateFunction],
                  energy_margin: float = None,
-                 weights_decay=2e-6,
                  **kwargs
                  ):
         super(EBM, self).__init__(**kwargs)
@@ -21,7 +20,6 @@ class EBM(Model):
         self.low_energy_state_functions = [esf for esf in energy_state_functions if esf.is_low_energy]
         self.high_energy_state_functions = [esf for esf in energy_state_functions if not esf.is_low_energy]
         self.energy_margin = energy_margin
-        self.weights_decay = weights_decay
 
     def call(self, inputs, training=None, mask=None) -> Union[tf.Tensor, List[tf.Tensor]]:
         energies = self.energy_model(inputs)
@@ -57,20 +55,10 @@ class EBM(Model):
         high_energy_loss, high_energy_value = self.compute_loss_for_energy(inputs, low_energy=False)
         loss = low_energy_loss + high_energy_loss
 
-        if (self.weights_decay is not None) and (self.weights_decay > 0.0):
-            loss += self.weights_decay_loss(l1=self.weights_decay)
-
         low_energy_accuracy = tf.reduce_mean(tf.cast(tf.less_equal(low_energy_value, 0), tf.float32))
         high_energy_accuracy = tf.reduce_mean(tf.cast(tf.greater(high_energy_value, 0), tf.float32))
         accuracy = (low_energy_accuracy + high_energy_accuracy) * 0.5
         return loss, accuracy
-
-    def weights_decay_loss(self, l1=0.0, l2=0.0, variables=None):
-        loss = 0
-        variables = self.trainable_variables if variables is None else variables
-        for variable in variables:
-            loss += tf.keras.regularizers.L1L2(l1=l1, l2=l2)(variable)
-        return loss
 
     def compute_loss_for_energy(self, inputs, low_energy: bool) -> Tuple[tf.Tensor, tf.Tensor]:
         energy_states = self.get_energy_states(inputs, low_energy=low_energy)
@@ -134,7 +122,6 @@ class EBM(Model):
                 "low_energy_functions": [str(func) for func in self.low_energy_state_functions],
                 "high_energy_functions": [str(func) for func in self.high_energy_state_functions],
                 "optimizer": self.optimizer.get_config(),
-                "energy_margin": self.energy_margin,
-                "weights_decay": self.weights_decay,
+                "energy_margin": self.energy_margin
             }
         return config

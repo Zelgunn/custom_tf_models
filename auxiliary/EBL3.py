@@ -47,14 +47,11 @@ class EBL3(Model):
         high_energy = self.compute_energy((wrong_audio, video))
         high_energy = tf.nn.relu(self._energy_margin - high_energy)
 
-        weight_decay = self.weights_decay_loss(l1=1e-7)
-
-        loss = low_energy + high_energy + weight_decay
+        loss = low_energy + high_energy
         return {
             "loss": loss,
             "low_energy": low_energy,
-            "high_energy": high_energy,
-            "weight_decay": weight_decay,
+            "high_energy": high_energy
         }
 
     @tf.function
