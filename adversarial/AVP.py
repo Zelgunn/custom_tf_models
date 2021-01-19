@@ -191,6 +191,7 @@ class AVP(Model):
             "discriminator/synth_energy": synth_energy,
             "discriminator/real_energy": real_energy,
             "discriminator/gradient_penalty": gradient_penalty,
+            "discriminator/energy_delta": real_energy - synth_energy,
         }
 
     # endregion
