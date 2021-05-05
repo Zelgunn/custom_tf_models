@@ -1,4 +1,3 @@
-# IAE : Interpolating Autoencoder
 import tensorflow as tf
 from tensorflow.python.keras import Model
 from typing import Dict, Union, Callable
@@ -9,16 +8,19 @@ from custom_tf_models.utils import split_steps
 from misc_utils.train_utils import CustomLearningRateSchedule
 
 
+# IAE : Interpolating Autoencoder
 class IAE(AE):
     def __init__(self,
                  encoder: Model,
                  decoder: Model,
                  step_size: int,
+                 use_stochastic_loss: bool = True,
                  **kwargs):
         super(IAE, self).__init__(encoder=encoder,
                                   decoder=decoder,
                                   **kwargs)
         self.step_size = step_size
+        self.use_stochastic_loss = use_stochastic_loss
 
     @tf.function
     def autoencode(self, inputs):
@@ -36,6 +38,13 @@ class IAE(AE):
     def compute_loss(self,
                      inputs
                      ) -> Dict[str, tf.Tensor]:
+        if self.use_stochastic_loss:
+            return self.compute_stochastic_loss(inputs)
+        else:
+            return self.compute_deterministic_loss(inputs)
+
+    @tf.function
+    def compute_stochastic_loss(self, inputs) -> Dict[str, tf.Tensor]:
         # region Forward
         start = inputs[:, :self.step_size]
         end = inputs[:, -self.step_size:]
@@ -53,12 +62,23 @@ class IAE(AE):
         decoded = self.decoder(latent_code)
         # endregion
 
-        reconstruction_loss = tf.square(target - decoded)
-        reconstruction_loss = tf.reduce_mean(reconstruction_loss)
+        loss = self.compute_reconstruction_loss(target, decoded)
+        interpolation_error = loss
 
-        loss = reconstruction_loss
+        return {"loss": loss, "interpolation_error": interpolation_error}
 
-        return {"loss": loss, "reconstruction_loss": reconstruction_loss}
+    @tf.function
+    def compute_deterministic_loss(self, inputs) -> Dict[str, tf.Tensor]:
+        decoded = self.interpolate(inputs)
+        loss = self.compute_reconstruction_loss(inputs, decoded)
+        interpolation_error = self.compute_interpolation_error(inputs, decoded)
+
+        return {"loss": loss, "interpolation_error": interpolation_error}
+
+    def compute_interpolation_error(self, inputs, outputs) -> tf.Tensor:
+        inputs = inputs[:, self.step_size:-self.step_size]
+        outputs = outputs[:, self.step_size:-self.step_size]
+        return self.compute_reconstruction_loss(inputs, outputs)
 
     @tf.function
     def interpolate(self, inputs):
@@ -121,24 +141,26 @@ class IAE(AE):
         return cosine_distance
 
     @tf.function
-    def get_interpolated_latent_code(self, inputs, merge_batch_and_steps):
+    def get_interpolated_latent_code(self, inputs, merge_batch_and_steps, extra_steps=0):
         inputs, _, new_shape = self.split_inputs(inputs, merge_batch_and_steps=False)
         batch_size, step_count, *_ = new_shape
+        total_step_count = step_count + extra_steps * 2
 
         encoded_first = self.encoder(inputs[:, 0])
         encoded_last = self.encoder(inputs[:, -1])
 
         encoded_shape_dimensions = tf.unstack(tf.shape(encoded_first)[1:])
-        tile_multiples = [1, step_count] + [1] * (len(inputs.shape) - 2)
+        tile_multiples = [1, total_step_count] + [1] * (len(inputs.shape) - 2)
         encoded_first = tf.tile(tf.expand_dims(encoded_first, axis=1), tile_multiples)
         encoded_last = tf.tile(tf.expand_dims(encoded_last, axis=1), tile_multiples)
 
-        weights = tf.linspace(0.0, 1.0, step_count)
+        weights = tf.range(start=-extra_steps, limit=step_count + extra_steps, dtype=tf.int32)
+        weights = tf.cast(weights / (step_count - 1), tf.float32)
         weights = tf.reshape(weights, tile_multiples)
 
         encoded = encoded_first * (1.0 - weights) + encoded_last * weights
         if merge_batch_and_steps:
-            encoded = tf.reshape(encoded, [batch_size * step_count, *encoded_shape_dimensions])
+            encoded = tf.reshape(encoded, [batch_size * total_step_count, *encoded_shape_dimensions])
         return encoded
 
     @tf.function
@@ -175,6 +197,7 @@ class IAE(AE):
         config = {
             **super(IAE, self).get_config(),
             "step_count": self.step_size,
+            "use_stochastic_loss": self.use_stochastic_loss,
         }
         return config
 
@@ -183,7 +206,7 @@ class IAE(AE):
         return [
             self.interpolation_mse,
             self.interpolation_mae,
-            self.latent_code_surprisal,
+            # self.latent_code_surprisal,
         ]
 
 

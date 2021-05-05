@@ -9,7 +9,7 @@ class EBL3(Model):
     def __init__(self,
                  audio_autoencoder: AE,
                  video_autoencoder: AE,
-                 fusion_autoencoder: AE,
+                 fusion_autoencoder: Model,
                  energy_margin: float,
                  **kwargs
                  ):

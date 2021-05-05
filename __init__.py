@@ -14,6 +14,9 @@ from custom_tf_models.basic.VAE import VAE
 from custom_tf_models.basic.IAE import IAE
 
 # noinspection PyUnresolvedReferences
+from custom_tf_models.basic.VIAE import VIAE
+
+# noinspection PyUnresolvedReferences
 from custom_tf_models.basic.TDAE import TDAE
 
 # noinspection PyUnresolvedReferences
@@ -27,4 +30,7 @@ from custom_tf_models.description_length.RDL import RDL
 from custom_tf_models.description_length.ALED import ALED
 # noinspection PyUnresolvedReferences
 from custom_tf_models.description_length.PreLED import PreLED
-
+# noinspection PyUnresolvedReferences
+from custom_tf_models.description_length.CnC import CnC
+# noinspection PyUnresolvedReferences
+from custom_tf_models.description_length.IterativeAE import IterativeAE

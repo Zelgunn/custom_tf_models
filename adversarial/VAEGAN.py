@@ -1,10 +1,8 @@
 import tensorflow as tf
-import tensorflow_probability as tfp
 from tensorflow.python.keras import Model
 from typing import Tuple, Dict
 
 from custom_tf_models import VAE
-from custom_tf_models.basic.VAE import get_reference_distribution
 from custom_tf_models.adversarial import GANLoss, GANLossMode
 
 
@@ -37,13 +35,6 @@ class VAEGAN(VAE):
 
         self.discriminator_optimizer = tf.keras.optimizers.Adam(self._get_discriminator_learning_rate,
                                                                 beta_1=0.5, beta_2=0.999)
-
-    @tf.function
-    def autoencode(self, inputs):
-        latent_distribution = self.get_latent_distribution(inputs)
-        z = latent_distribution.sample()
-        decoded = self.decoder(z)
-        return decoded
 
     # region Training
     @property
@@ -92,11 +83,11 @@ class VAEGAN(VAE):
     def compute_loss(self,
                      inputs
                      ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
-        latent_distribution = self.get_latent_distribution(inputs)
-        z = latent_distribution.sample()
-        decoded = self.decoder(z)
+        latent_mean, latent_log_var = self.get_latent_distribution(inputs)
+        latent_code = self.sample_distribution(latent_mean, latent_log_var)
+        decoded = self.decoder(latent_code)
 
-        noise = tf.random.normal(shape=z.shape, mean=0.0, stddev=1.0)
+        noise = tf.random.normal(shape=latent_code.shape, mean=0.0, stddev=1.0)
         generated = self.decoder(noise)
 
         discriminated_inputs, inputs_high_level_features = self.discriminator(inputs)
@@ -109,10 +100,7 @@ class VAEGAN(VAE):
         learned_reconstruction_loss = tf.reduce_mean(learned_reconstruction_loss)
         learned_reconstruction_loss = learned_reconstruction_loss
 
-        reference_distribution = get_reference_distribution(latent_distribution)
-        kl_divergence = tfp.distributions.kl_divergence(latent_distribution, reference_distribution)
-        kl_divergence = tf.maximum(kl_divergence, 0.0)
-        kl_divergence = tf.reduce_mean(kl_divergence)
+        kl_divergence = self.compute_kl_divergence(latent_mean, latent_log_var)
 
         gan_loss = GANLoss(mode=GANLossMode.VANILLA)
         decoder_fake_loss = gan_loss(discriminated_decoded, is_real=True)

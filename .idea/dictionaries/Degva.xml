@@ -1,15 +1,22 @@
 <component name="ProjectDictionaryState">
   <dictionary name="Degva">
     <words>
+      <w>autoencode</w>
+      <w>autoencoder</w>
       <w>binarization</w>
       <w>binarize</w>
       <w>determistic</w>
+      <w>iaegan</w>
       <w>initializers</w>
+      <w>ltde</w>
       <w>maxval</w>
       <w>minval</w>
       <w>sgld</w>
+      <w>surprisal</w>
       <w>tensorflow</w>
       <w>unstandardize</w>
+      <w>unsynced</w>
+      <w>viae</w>
       <w>wasserstein</w>
     </words>
   </dictionary>
