@@ -4,7 +4,7 @@ from typing import List, Tuple
 
 from custom_tf_models.basic.IAE import IAE
 from custom_tf_models.multimodal import MMAE
-from utils import split_steps
+from custom_tf_models.utils import split_steps
 
 
 class MIAE(MMAE):

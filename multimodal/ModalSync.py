@@ -2,6 +2,8 @@ import tensorflow as tf
 from tensorflow.python.keras.models import Model
 from typing import List, Dict
 
+from misc_utils.math_utils import reduce_mean_from
+
 
 class ModalSync(Model):
     def __init__(self,
@@ -32,6 +34,7 @@ class ModalSync(Model):
     @tf.function
     def encode(self, inputs: List[tf.Tensor], training=None, mask=None) -> tf.Tensor:
         encoded = []
+
         for i in range(self.modality_count):
             ith_code = self.encoders[i](inputs[i], training=training, mask=mask)
             encoded.append(ith_code)
@@ -67,18 +70,21 @@ class ModalSync(Model):
         synced_energy = self(synced_inputs, training=True)
         unsynced_energy = self(unsynced_inputs, training=True)
 
-        synced_energy = tf.reduce_mean(synced_energy)
-        unsynced_energy = tf.reduce_mean(unsynced_energy)
+        synced_energy = reduce_mean_from(synced_energy)
+        unsynced_energy = reduce_mean_from(unsynced_energy)
 
         if self.energy_margin is None:
-            loss = synced_energy - unsynced_energy
+            synced_loss = tf.losses.binary_crossentropy(tf.zeros_like(synced_energy), tf.nn.sigmoid(synced_energy))
+            unsynced_loss = tf.losses.binary_crossentropy(tf.ones_like(unsynced_energy), tf.nn.sigmoid(unsynced_energy))
+            loss = tf.reduce_mean(synced_loss + unsynced_loss)
         else:
-            loss = tf.nn.relu(self.energy_margin + synced_energy) + tf.nn.relu(self.energy_margin - unsynced_energy)
+            loss = tf.nn.relu(self._energy_margin + synced_energy) + tf.nn.relu(self._energy_margin - unsynced_energy)
+            loss = tf.reduce_mean(loss) - self._energy_margin * 2.0
 
         return {
             "loss": loss,
-            "synced_energy": synced_energy,
-            "unsynced_energy": unsynced_energy,
+            "synced_energy": tf.reduce_mean(synced_energy),
+            "unsynced_energy": tf.reduce_mean(unsynced_energy),
         }
 
     @tf.function
@@ -87,7 +93,7 @@ class ModalSync(Model):
         for i in range(self.modality_count):
             modality = inputs[i]
             modality_input_length = self.get_modality_input_length(i)
-            modality_slice = modality[modality_input_length:]
+            modality_slice = modality[:, :modality_input_length]
             synced_inputs.append(modality_slice)
         return synced_inputs
 
@@ -103,7 +109,7 @@ class ModalSync(Model):
             is_unsynced = tf.cast(i == unsynced_index, tf.int32)
             start = is_unsynced * (modality_length - modality_input_length)
             end = start + modality_input_length
-            modality_slice = modality[start:end]
+            modality_slice = modality[:, start:end]
             unsynced_inputs.append(modality_slice)
 
         return unsynced_inputs
@@ -113,3 +119,7 @@ class ModalSync(Model):
             "encoders": [encoder.get_config() for encoder in self.encoders],
             "energy_model": self.energy_model,
         }
+
+    @property
+    def additional_test_metrics(self):
+        return [self.call]
