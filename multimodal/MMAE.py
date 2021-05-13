@@ -1,113 +1,93 @@
 # MMAE : Multi-modal Autoencoder
 import tensorflow as tf
 from tensorflow.python.keras import Model
-from typing import List, Dict
+from tensorflow.python.keras.layers import Input, Concatenate, Flatten, Reshape
+from tensorflow.python.keras.losses import mean_absolute_error
+import numpy as np
+from typing import List, Union, Callable
 
 from custom_tf_models.basic.AE import AE
+from CustomKerasLayers import SplitLayer
 
 
-class MMAE(Model):
+class MMAE(AE):
     def __init__(self,
-                 autoencoders: List[AE],
+                 encoders: List[Model],
+                 decoders: List[Model],
                  fusion_model: Model,
-                 concatenate_latent_codes=False,
+                 reconstruction_loss_function: Callable = mean_absolute_error,
+                 multi_modal_loss=False,
                  **kwargs):
-        super(MMAE, self).__init__(**kwargs)
+        name = kwargs["name"] if "name" in kwargs else "MMAE"
+        encoder = self.join_encoders(encoders, fusion_model, name)
+        decoder = self.join_decoders(decoders, fusion_model, name)
 
-        self.autoencoders = autoencoders
+        super(MMAE, self).__init__(encoder=encoder,
+                                   decoder=decoder,
+                                   reconstruction_loss_function=reconstruction_loss_function,
+                                   **kwargs)
+
+        self.encoders = encoders
+        self.decoders = decoders
         self.fusion_model = fusion_model
-        self.concatenate_latent_codes = concatenate_latent_codes
+        self.multi_modal_loss = multi_modal_loss
 
-        self.optimizer = None
+    @staticmethod
+    def join_encoders(encoders: List[Model], fusion_model: Model, name: str) -> Model:
+        inputs = [encoder.input for encoder in encoders]
+        codes = [encoder.output for encoder in encoders]
 
-    def call(self, inputs, training=None, mask=None):
-        latent_codes = []
-        for i in range(self.modality_count):
-            latent_code = self.autoencoders[i].encode(inputs[i])
-            latent_codes.append(latent_code)
+        if len(fusion_model.input_shape) == 2:
+            for i in range(len(codes)):
+                if len(codes[i].shape) != 2:
+                    codes[i] = Flatten()(codes[i])
+            codes = Concatenate()(codes)
 
-        if self.concatenate_latent_codes:
-            latent_code_sizes = [code.shape[-1] for code in latent_codes]
-            latent_codes = tf.concat(latent_codes, axis=-1)
-            refined_latent_codes = self.fusion_model(latent_codes)
-            refined_latent_codes = tf.split(refined_latent_codes, num_or_size_splits=latent_code_sizes, axis=-1)
-        else:
-            refined_latent_codes = self.fusion_model(latent_codes)
+        output = fusion_model(codes)
+        return Model(inputs=inputs, outputs=[output], name=name)
+
+    @staticmethod
+    def join_decoders(decoders: List[Model], fusion_model: Model, name: str) -> Model:
+        code_shapes = [decoder.input_shape[1:] for decoder in decoders]
+        code_sizes = [int(np.prod(code_shape)) for code_shape in code_shapes]
+
+        input_layer = Input(batch_input_shape=fusion_model.output_shape)
+        codes = SplitLayer(num_or_size_splits=code_sizes, axis=-1, num=len(decoders))(input_layer)
 
         outputs = []
-        for i in range(self.modality_count):
-            output = self.autoencoders[i].decode(refined_latent_codes[i])
-            output = tf.reshape(output, tf.shape(inputs[i]))
-            outputs.append(output)
+        for decoder, code, code_shape in zip(decoders, codes, code_shapes):
+            reshape_layer = Reshape(target_shape=code_shape)
+            code = reshape_layer(code)
+            decoded = decoder(code)
+            outputs.append(decoded)
 
-        return outputs
-
-    @tf.function
-    def train_step(self, inputs) -> Dict[str, tf.Tensor]:
-        with tf.GradientTape() as tape:
-            metrics = self.compute_loss(inputs)
-            loss = metrics["loss"]
-
-        gradients = tape.gradient(loss, self.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-
-        return metrics
+        return Model(inputs=[input_layer], outputs=outputs, name=name)
 
     @tf.function
-    def test_step(self, inputs) -> Dict[str, tf.Tensor]:
-        return self.compute_loss(inputs)
+    def compute_reconstruction_loss(self,
+                                    inputs: List[tf.Tensor],
+                                    outputs: List[tf.Tensor],
+                                    axis=None) -> Union[tf.Tensor, List[tf.Tensor]]:
+        if self.multi_modal_loss:
+            return super(MMAE, self).compute_reconstruction_loss(inputs, outputs)
 
-    # region Loss
-    @tf.function
-    def compute_loss(self, inputs) -> Dict[str, tf.Tensor]:
-        if self.modality_count == 2:
-            input_1, input_2 = inputs
-            return self.compute_loss_for_two(input_1, input_2)
-        else:
-            return self.compute_loss_unoptimized(inputs)
+        loss = []
+        for i in range(len(inputs)):
+            modality_loss = super(MMAE, self).compute_reconstruction_loss(inputs[i], outputs[i])
+            if axis is not None:
+                modality_loss = tf.reduce_mean(modality_loss, axis=axis)
+            else:
+                modality_loss = tf.reduce_mean(modality_loss)
+            loss.append(modality_loss)
 
-    @tf.function
-    def compute_loss_for_two(self, input_1, input_2) -> Dict[str, tf.Tensor]:
-        output_1, output_2 = self([input_1, input_2])
-        loss_1 = self.compute_modality_loss(input_1, output_1)
-        loss_2 = self.compute_modality_loss(input_2, output_2)
-        total_loss = loss_1 + loss_2
-        return {
-            "loss": total_loss,
-            "modality_1_loss": loss_1,
-            "modality_2_loss": loss_2,
-        }
+        if axis is None:
+            loss = tf.reduce_mean(loss)
 
-    def compute_loss_unoptimized(self, inputs) -> Dict[str, tf.Tensor]:
-        outputs = self(inputs)
+        return loss
 
-        losses = []
-        for i in range(self.modality_count):
-            modality_loss: tf.Tensor = self.compute_modality_loss(inputs, outputs)
-            losses.append(modality_loss)
-
-        total_loss = tf.reduce_sum(losses)
-        return {
-            "loss": total_loss,
-            **{"modality_{}_loss".format(i + 1): losses[i] for i in range(self.modality_count)}
-        }
-
-    @tf.function
-    def compute_modality_loss(self, inputs, outputs) -> tf.Tensor:
-        return tf.reduce_mean(tf.square(inputs - outputs))
-
-    # endregion
-
-    # region Properties
-    @property
-    def modality_count(self) -> int:
-        return len(self.autoencoders)
-
-    # endregion
-
-    # region Config
     def get_config(self):
-        config = {ae.name: ae.get_config() for ae in self.autoencoders}
-        config["concatenate_latent_codes"] = self.concatenate_latent_codes
-        return config
-    # endregion
+        super_config = super(MMAE, self).get_config()
+        return {
+            **super_config,
+            "multi_modal_loss": self.multi_modal_loss,
+        }

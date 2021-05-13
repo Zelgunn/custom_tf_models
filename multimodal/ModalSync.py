@@ -1,5 +1,6 @@
 import tensorflow as tf
 from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.losses import binary_crossentropy
 from typing import List, Dict
 
 from misc_utils.math_utils import reduce_mean_from
@@ -74,17 +75,22 @@ class ModalSync(Model):
         unsynced_energy = reduce_mean_from(unsynced_energy)
 
         if self.energy_margin is None:
-            synced_loss = tf.losses.binary_crossentropy(tf.zeros_like(synced_energy), tf.nn.sigmoid(synced_energy))
-            unsynced_loss = tf.losses.binary_crossentropy(tf.ones_like(unsynced_energy), tf.nn.sigmoid(unsynced_energy))
+            synced_loss = binary_crossentropy(tf.zeros_like(synced_energy), synced_energy, from_logits=True)
+            unsynced_loss = binary_crossentropy(tf.ones_like(unsynced_energy), unsynced_energy, from_logits=True)
             loss = tf.reduce_mean(synced_loss + unsynced_loss)
         else:
             loss = tf.nn.relu(self._energy_margin + synced_energy) + tf.nn.relu(self._energy_margin - unsynced_energy)
             loss = tf.reduce_mean(loss) - self._energy_margin * 2.0
 
+        synced_accuracy = tf.reduce_mean(tf.cast(synced_energy <= 0.0, tf.float32))
+        unsynced_accuracy = tf.reduce_mean(tf.cast(unsynced_energy > 0.0, tf.float32))
+        accuracy = (synced_accuracy + unsynced_accuracy) * 0.5
+
         return {
             "loss": loss,
             "synced_energy": tf.reduce_mean(synced_energy),
             "unsynced_energy": tf.reduce_mean(unsynced_energy),
+            "accuracy": accuracy
         }
 
     @tf.function

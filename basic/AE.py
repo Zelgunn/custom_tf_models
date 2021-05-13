@@ -1,7 +1,8 @@
 import tensorflow as tf
 from tensorflow.python.keras import Model
 from tensorflow.python.keras.callbacks import CallbackList
-from typing import Dict
+from tensorflow.python.keras.losses import mean_absolute_error
+from typing import Dict, Callable
 
 from misc_utils.train_utils import CustomLearningRateSchedule
 
@@ -11,11 +12,13 @@ class AE(Model):
     def __init__(self,
                  encoder: Model,
                  decoder: Model,
+                 reconstruction_loss_function: Callable = mean_absolute_error,
                  **kwargs):
         super(AE, self).__init__(**kwargs)
 
         self.encoder = encoder
         self.decoder = decoder
+        self.reconstruction_loss_function = reconstruction_loss_function
 
         self.train_step_index = tf.Variable(initial_value=0, trainable=False, name="train_step_index", dtype=tf.int32)
 
@@ -61,9 +64,11 @@ class AE(Model):
         loss = self.compute_reconstruction_loss(inputs, outputs)
         return {"loss": loss}
 
-    @staticmethod
-    def compute_reconstruction_loss(inputs, outputs, axis=None) -> tf.Tensor:
-        return tf.reduce_mean(tf.abs(inputs - outputs), axis=axis)
+    @tf.function
+    def compute_reconstruction_loss(self, inputs, outputs, axis=None) -> tf.Tensor:
+        loss = self.reconstruction_loss_function(inputs, outputs)
+        loss = tf.reduce_mean(loss, axis=axis)
+        return loss
 
     def on_train_begin(self, callbacks: CallbackList, initial_epoch: int, steps_per_epoch: int):
         super(AE, self).on_train_begin(callbacks, initial_epoch, steps_per_epoch)
@@ -80,6 +85,7 @@ class AE(Model):
         config = {
             "encoder": self.encoder.get_config(),
             "decoder": self.decoder.get_config(),
+            "reconstruction_loss_function": self.reconstruction_loss_function.__name__
         }
         if self.optimizer is not None:
             config["optimizer"] = self.optimizer.get_config()
