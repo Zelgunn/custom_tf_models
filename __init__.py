@@ -34,3 +34,6 @@ from custom_tf_models.description_length.PreLED import PreLED
 from custom_tf_models.description_length.CnC import CnC
 # noinspection PyUnresolvedReferences
 from custom_tf_models.description_length.IterativeAE import IterativeAE
+
+# noinspection PyUnresolvedReferences
+from custom_tf_models.self_supervised.LTM import LTM

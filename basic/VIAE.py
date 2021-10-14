@@ -27,7 +27,9 @@ class VIAE(IAE):
 
         self.epsilon_optimizer = tf.keras.optimizers.Adam()
 
+    @tf.function
     def autoencode(self, inputs: tf.Tensor, deterministic=True):
+        inputs = tf.convert_to_tensor(inputs)
         if inputs.shape[1] == self.step_size:
             return self.autoencode_one(inputs)
         else:
@@ -112,7 +114,7 @@ class VIAE(IAE):
 
     @tf.function
     def autoencode_sampling_epsilon(self, inputs: tf.Tensor, n_steps: tf.Tensor = 64):
-        batch_size, total_length, channels = inputs.shape
+        batch_size, total_length, *dimensions = inputs.shape
         step_count = total_length // self.step_size
 
         # region Encode mu, sigma² = e(x)
@@ -123,22 +125,22 @@ class VIAE(IAE):
         # endregion
 
         # region Sample p(z|x)
-        code_length, code_size = latent_log_var.shape[2:]
+        code_shape = latent_log_var.shape[2:]
         # noinspection PyTypeChecker
-        epsilon_shape = [n_steps - 1, 1, code_length, code_size]
+        epsilon_shape = [n_steps - 1, 1, *code_shape]
         epsilon = tf.random.normal(epsilon_shape)
-        epsilon = tf.concat([tf.zeros([1, 1, code_length, code_size]), epsilon], axis=0)
+        epsilon = tf.concat([tf.zeros([1, 1, *code_shape]), epsilon], axis=0)
 
         latent_mean = tf.clip_by_value(latent_mean, -1e7, 1e7)
         latent_log_var = tf.minimum(latent_log_var, 8e1)
         latent_code = latent_mean + tf.exp(0.5 * latent_log_var) * epsilon
 
-        latent_code = tf.reshape(latent_code, [n_steps * batch_size * step_count, code_length, code_size])
+        latent_code = tf.reshape(latent_code, [n_steps * batch_size * step_count, *code_shape])
         # endregion
 
         # region Decode
         decoded = self.decoder(latent_code)
-        decoded = tf.reshape(decoded, [n_steps, batch_size, total_length, channels])
+        decoded = tf.reshape(decoded, [n_steps, batch_size, total_length, *dimensions])
         # endregion
 
         # region Select best epsilon (lowest MAE)
@@ -153,6 +155,30 @@ class VIAE(IAE):
         # endregion
 
         return decoded
+
+    @tf.function
+    def multi_sample_error(self, inputs: tf.Tensor, metric, n_steps: tf.Tensor = 8):
+        outputs = self.autoencode_sampling_epsilon(inputs, n_steps=n_steps)
+        error = metric(inputs, outputs)
+        return reduce_mean_from(error, start_axis=2)
+
+    @tf.function
+    def multi_sample_mae(self, inputs: tf.Tensor):
+        return self.multi_sample_error(inputs, metric=tf.losses.mae)
+
+    @tf.function
+    def multi_sample_mse(self, inputs: tf.Tensor):
+        return self.multi_sample_error(inputs, metric=tf.losses.mse)
+
+    @property
+    def additional_test_metrics(self):
+        return [
+            self.interpolation_mse,
+            self.interpolation_mae,
+            # self.latent_code_surprisal,
+            # self.multi_sample_mae,
+            # self.multi_sample_mse,
+        ]
 
     def get_config(self):
         config = {
