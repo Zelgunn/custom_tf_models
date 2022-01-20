@@ -54,22 +54,55 @@ class VIAE(IAE):
         return decoded
 
     @tf.function
-    def sample_latent_distribution(self, latent_mean: tf.Tensor, latent_log_var: tf.Tensor) -> tf.Tensor:
-        epsilon = tf.random.normal(shape=tf.shape(latent_mean))
+    def _sample_latent_distribution(self,
+                                    latent_mean: tf.Tensor,
+                                    latent_log_var: tf.Tensor,
+                                    epsilon: tf.Tensor,
+                                    ) -> tf.Tensor:
         # noinspection PyTypeChecker
         latent_code = latent_mean + tf.exp(0.5 * latent_log_var) * epsilon
         return latent_code
 
     @tf.function
-    def interpolate(self, inputs, deterministic=True):
-        inputs_shape = tf.shape(inputs)
-        encoded = self.get_interpolated_latent_code(inputs, merge_batch_and_steps=True)
+    def _sample_epsilon(self, latent_mean: tf.Tensor):
+        epsilon = tf.random.normal(shape=tf.shape(latent_mean))
+        return epsilon
 
-        latent_mean, latent_log_var = tf.split(encoded, num_or_size_splits=2, axis=-1)
-        if deterministic:
-            latent_code = latent_mean
+    @tf.function
+    def sample_latent_distribution(self, latent_mean: tf.Tensor, latent_log_var: tf.Tensor) -> tf.Tensor:
+        epsilon = self._sample_epsilon(latent_mean)
+        latent_code = self._sample_latent_distribution(latent_mean, latent_log_var, epsilon)
+        return latent_code
+
+    @tf.function
+    def _split_encoded(self, encoded: tf.Tensor) -> tf.Tensor:
+        return tf.split(encoded, num_or_size_splits=2, axis=-1)
+
+    @tf.function
+    def interpolate(self, inputs, take_mean=True):
+        inputs, inputs_shape, new_shape = self.split_inputs(inputs, merge_batch_and_steps=False)
+        step_count = new_shape[1]
+
+        # 1) encode
+        encoded_first = self.encoder(inputs[:, 0])
+        encoded_last = self.encoder(inputs[:, -1])
+
+        # 2) sample (or take mean)
+        latent_mean_first, latent_log_var_first = self._split_encoded(encoded_first)
+        latent_mean_last, latent_log_var_last = self._split_encoded(encoded_last)
+        if take_mean:
+            latent_code_first = latent_mean_first
+            latent_code_last = latent_mean_last
         else:
-            latent_code = self.sample_latent_distribution(latent_mean, latent_log_var)
+            epsilon = self._sample_epsilon(latent_mean_first)
+            latent_code_first = self._sample_latent_distribution(latent_mean_first, latent_log_var_first, epsilon)
+            latent_code_last = self._sample_latent_distribution(latent_mean_last, latent_log_var_last, epsilon)
+
+        # 3) interpolate
+        latent_code = self.interpolate_latent_codes(latent_code_first, latent_code_last,
+                                                    merge_batch_and_steps=True, step_count=step_count)
+
+        # 4) decode
         decoded = self.decoder(latent_code)
         decoded = tf.reshape(decoded, inputs_shape)
 
@@ -85,19 +118,35 @@ class VIAE(IAE):
     def compute_deterministic_loss(self, inputs) -> Dict[str, tf.Tensor]:
         target = inputs
 
-        inputs_shape = tf.shape(inputs)
         # inputs = tf.clip_by_value(inputs + tf.random.normal(inputs_shape, stddev=0.01), 0.0, 1.0)
+        inputs, inputs_shape, new_shape = self.split_inputs(inputs, merge_batch_and_steps=False)
+        step_count = new_shape[1]
 
-        encoded = self.get_interpolated_latent_code(inputs, merge_batch_and_steps=True)
-        latent_mean, latent_log_var = tf.split(encoded, num_or_size_splits=2, axis=-1)
-        latent_code = self.sample_latent_distribution(latent_mean, latent_log_var)
+        # 1) encode
+        encoded_first = self.encoder(inputs[:, 0])
+        encoded_last = self.encoder(inputs[:, -1])
 
+        # 2) sample (or take mean)
+        latent_mean_first, latent_log_var_first = self._split_encoded(encoded_first)
+        latent_mean_last, latent_log_var_last = self._split_encoded(encoded_last)
+
+        epsilon = self._sample_epsilon(latent_mean_first)
+        latent_code_first = self._sample_latent_distribution(latent_mean_first, latent_log_var_first, epsilon)
+        latent_code_last = self._sample_latent_distribution(latent_mean_last, latent_log_var_last, epsilon)
+
+        # 3) interpolate
+        latent_code = self.interpolate_latent_codes(latent_code_first, latent_code_last,
+                                                    merge_batch_and_steps=True, step_count=step_count)
+        # 4) decode
         decoded = self.decoder(latent_code)
         decoded = tf.reshape(decoded, inputs_shape)
 
+        # 5) loss (interpolation error + kld)
         reconstruction_error = self.compute_reconstruction_loss(target, decoded)
         interpolation_error = self.compute_interpolation_error(target, decoded)
-        kl_divergence = self.compute_kl_divergence(latent_mean, latent_log_var)
+        kl_divergence_first = self.compute_kl_divergence(latent_mean_first, latent_log_var_first)
+        kl_divergence_last = self.compute_kl_divergence(latent_mean_last, latent_log_var_last)
+        kl_divergence = (kl_divergence_first + kl_divergence_last) * tf.constant(0.5)
 
         loss = reconstruction_error + kl_divergence * self._kl_divergence_lambda
 

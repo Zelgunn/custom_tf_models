@@ -4,7 +4,7 @@ from typing import Dict, Union, Callable
 
 from misc_utils.math_utils import lerp
 from custom_tf_models.basic.AE import AE
-from custom_tf_models.utils import split_steps
+from custom_tf_models.utils import split_steps, get_known_shape
 from misc_utils.train_utils import CustomLearningRateSchedule
 
 
@@ -144,13 +144,29 @@ class IAE(AE):
     def get_interpolated_latent_code(self, inputs, merge_batch_and_steps, extra_steps=0):
         inputs, _, new_shape = self.split_inputs(inputs, merge_batch_and_steps=False)
         batch_size, step_count, *_ = new_shape
-        total_step_count = step_count + extra_steps * 2
 
         encoded_first = self.encoder(inputs[:, 0])
         encoded_last = self.encoder(inputs[:, -1])
 
+        encoded = self.interpolate_latent_codes(encoded_first, encoded_last,
+                                                merge_batch_and_steps, step_count, extra_steps)
+        return encoded
+
+    @tf.function
+    def interpolate_latent_codes(self,
+                                 encoded_first: tf.Tensor,
+                                 encoded_last: tf.Tensor,
+                                 merge_batch_and_steps: bool,
+                                 step_count: int,
+                                 extra_steps: int = 0
+                                 ):
+        code_shape = get_known_shape(encoded_first)
+        batch_size = code_shape[0]
+        code_rank = encoded_first.shape.rank
+        total_step_count = step_count + extra_steps * 2
+
         encoded_shape_dimensions = tf.unstack(tf.shape(encoded_first)[1:])
-        tile_multiples = [1, total_step_count] + [1] * (len(inputs.shape) - 2)
+        tile_multiples = [1, total_step_count] + [1] * (code_rank - 1)
         encoded_first = tf.tile(tf.expand_dims(encoded_first, axis=1), tile_multiples)
         encoded_last = tf.tile(tf.expand_dims(encoded_last, axis=1), tile_multiples)
 
